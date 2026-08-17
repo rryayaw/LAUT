@@ -24,5 +24,3 @@ Prerequisites: Docker Desktop with Docker Compose.
    - Web: http://localhost:3000
    - API health check: http://localhost:8000/health
    - API docs: http://localhost:8000/docs
-
-See [docs/project.md](docs/project.md) for the active product direction and [docs/changes.md](docs/changes.md) for material decisions and implementation changes.
