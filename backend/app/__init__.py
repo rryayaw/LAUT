@@ -1,0 +1,1 @@
+"""LAUT backend application."""
