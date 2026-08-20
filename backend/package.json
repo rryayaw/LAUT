@@ -5,20 +5,26 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "tsc",
+    "build": "npm run prisma:generate && tsc",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "npm run prisma:generate && tsc --noEmit",
+    "prisma:generate": "prisma generate"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "7.9.1",
+    "@prisma/client": "7.9.1",
     "cors": "2.8.6",
     "dotenv": "17.4.2",
     "express": "5.2.1",
+    "pg": "8.23.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/cors": "2.8.19",
     "@types/express": "5.0.6",
     "@types/node": "22.10.1",
+    "@types/pg": "8.15.6",
+    "prisma": "7.9.1",
     "tsx": "4.23.0",
     "typescript": "5.7.2"
   }
