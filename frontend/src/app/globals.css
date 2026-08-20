@@ -1,0 +1,160 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --canvas: #f5faf9;
+  --sidebar: #133852;
+  --sidebar-text: #f8fdfd;
+  --sidebar-muted: #afd5d6;
+  --sidebar-line: #2d5570;
+  --surface: #ffffff;
+  --surface-subtle: #eef7f7;
+  --surface-pressed: #dceeee;
+  --ink: #133852;
+  --muted: #4e6a79;
+  --line: #cfe1e2;
+  --line-strong: #afd5d6;
+  --primary-source: #51a8af;
+  --brand: #246f76;
+  --brand-strong: #1a5961;
+  --brand-pressed: #133852;
+  --brand-soft: #def0f1;
+  --risk: #b65d4d;
+  --risk-soft: #fdece8;
+  --risk-line: #e89180;
+  --focus: #246f76;
+  --chart-baseline: #79aaae;
+  --sheet-scrim: rgb(19 56 82 / 38%);
+  --sheet-shadow: -24px 0 56px -32px rgb(19 56 82 / 55%);
+  color: var(--ink);
+  background: var(--canvas);
+  font-family: Geist, Satoshi, "Aptos", "Segoe UI", sans-serif;
+  font-feature-settings: "ss01" on, "cv01" on;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--canvas);
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 1180px;
+  margin: 0;
+  background: var(--canvas);
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.font-mono {
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+.skip-link {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 50;
+  transform: translateY(-160%);
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  padding: 0.6rem 0.8rem;
+  color: var(--ink);
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: transform 150ms ease-out;
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.trend-line {
+  stroke-dasharray: 1200;
+  stroke-dashoffset: 1200;
+  animation: draw-line 700ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.trend-baseline {
+  opacity: 0;
+  animation: fade-in 300ms ease-out 180ms forwards;
+}
+
+.balance-sellable,
+.balance-normal,
+.balance-warning,
+.balance-muted {
+  min-width: 4px;
+  box-shadow: inset 1px 0 0 rgb(255 255 255 / 55%);
+}
+
+.balance-sellable {
+  background: var(--brand);
+}
+
+.balance-normal {
+  background: var(--primary-source);
+}
+
+.balance-warning {
+  background: var(--risk);
+}
+
+.balance-muted {
+  background: var(--sidebar-muted);
+}
+
+.investigation-sheet[data-state="open"] {
+  animation: sheet-in 220ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.investigation-sheet[data-state="closed"] {
+  animation: sheet-out 150ms ease-in forwards;
+}
+
+@keyframes draw-line {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sheet-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes sheet-out {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
