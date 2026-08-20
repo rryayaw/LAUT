@@ -27,7 +27,7 @@ type NavigationItem = {
 
 const primaryNavigation: NavigationItem[] = [
   { area: "dashboard", href: "/", icon: LayoutDashboard, label: "Dashboard" },
-  { icon: ClipboardCheck, label: "Batches" },
+  { area: "batches", href: "/batches", icon: ClipboardCheck, label: "Batches" },
   { count: 2, icon: MessageCircle, label: "WhatsApp review" },
   { icon: BarChart3, label: "Analysis" },
   { count: 3, icon: ScanLine, label: "Investigations" },
