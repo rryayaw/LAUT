@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["public", "auth"]
+}
+
+// Supabase Auth owns this table. It preserves the foreign-key relationship
+// from public.profiles but is never migrated or written by Prisma.
+model AuthUser {
+  id      String   @id @db.Uuid
+  email   String?  @db.Text
+  profile Profile?
+
+  @@map("users")
+  @@schema("auth")
+}
+
+model Profile {
+  id          String           @id @db.Uuid
+  email       String           @db.Text
+  displayName String?          @map("display_name") @db.Text
+  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  authUser    AuthUser         @relation(fields: [id], references: [id], onDelete: Cascade)
+  sites       ProcessingSite[]
+
+  @@map("profiles")
+  @@schema("public")
+}
+
+model ProcessingSite {
+  id              String           @id @default(uuid()) @db.Uuid
+  name            String           @db.Text
+  timezone        String           @default("Asia/Jakarta") @db.Text
+  ownerId         String           @map("owner_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  owner           Profile          @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  productionUnits ProductionUnit[]
+
+  @@index([ownerId])
+  @@map("processing_sites")
+  @@schema("public")
+}
+
+// This existing table represents a production line in the product domain.
+model ProductionUnit {
+  id               String         @id @default(uuid()) @db.Uuid
+  processingSiteId String         @map("processing_site_id") @db.Uuid
+  name             String         @db.Text
+  description      String?        @db.Text
+  isActive         Boolean        @default(true) @map("is_active")
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  processingSite   ProcessingSite @relation(fields: [processingSiteId], references: [id], onDelete: Cascade)
+
+  @@unique([processingSiteId, name])
+  @@index([processingSiteId])
+  @@map("production_units")
+  @@schema("public")
+}
