@@ -5,13 +5,15 @@
   "scripts": {
     "predev": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && tailwindcss -i ./src/app/globals.css -o ./src/app/generated.css --config ./tailwind.config.js",
     "dev": "next dev",
-    "prebuild": "tailwindcss -i ./src/app/globals.css -o ./src/app/generated.css --config ./tailwind.config.js",
+    "prebuild": "node -e \"require('fs').rmSync('.next', { recursive: true, force: true })\" && tailwindcss -i ./src/app/globals.css -o ./src/app/generated.css --config ./tailwind.config.js",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.23",
+    "@radix-ui/react-label": "^2.1.15",
+    "@radix-ui/react-select": "^2.3.7",
     "@radix-ui/react-slot": "^1.3.3",
     "@types/node": "22.10.1",
     "@types/react": "19.0.2",
