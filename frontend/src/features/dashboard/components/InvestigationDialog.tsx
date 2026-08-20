@@ -17,7 +17,7 @@ export function InvestigationDialog({ batch, evidence, categories, difference }:
     <SheetContent className="investigation-sheet flex w-[32rem] max-w-[calc(100vw-2rem)] flex-col gap-0 border-l border-[var(--line-strong)] bg-[var(--surface)] p-0 sm:max-w-none" side="right">
         <SheetHeader className="border-b border-[var(--line)] px-6 py-5 text-left">
           <p className="text-xs font-medium text-[var(--risk)]">Suggested investigation</p>
-          <SheetTitle className="mt-1 text-xl font-semibold tracking-tight text-[var(--ink)]">Check Mina receiving temperature</SheetTitle>
+          <SheetTitle className="mt-1 text-xl font-semibold tracking-tight text-[var(--ink)]">Check Line 2A receiving temperature</SheetTitle>
           <SheetDescription className="mt-2 text-sm leading-6 text-[var(--muted)]">Evidence from batch {batch.id} on {lineSummary} at {batch.productionSite}; review before approval.</SheetDescription>
         </SheetHeader>
 

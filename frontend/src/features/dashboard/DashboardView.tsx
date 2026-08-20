@@ -4,7 +4,7 @@ import { BatchHistoryTable } from "./components/BatchHistoryTable";
 import { BatchReviewPanel } from "./components/BatchReviewPanel";
 import { DashboardMetricStrip } from "./components/DashboardMetricStrip";
 import { InvestigationQueue } from "./components/InvestigationQueue";
-import { SupplierSignalsPanel } from "./components/SupplierSignalsPanel";
+import { ProductionSiteSignalsPanel } from "./components/ProductionSiteSignalsPanel";
 import { YieldTrendPanel } from "./components/YieldTrendPanel";
 import { dashboardSnapshot } from "./placeholder/dashboard-data";
 import { OperationsShell } from "@/components/app/OperationsShell";
@@ -44,7 +44,7 @@ export function DashboardView() {
                 <BatchHistoryTable batches={data.recentBatches} />
               </section>
               <aside aria-labelledby="signals-title" className="col-span-4 border-y border-[var(--line)] bg-[var(--surface)]">
-                <SupplierSignalsPanel signals={data.supplierSignals} />
+                <ProductionSiteSignalsPanel signals={data.productionSiteSignals} />
               </aside>
             </section>
       </main>

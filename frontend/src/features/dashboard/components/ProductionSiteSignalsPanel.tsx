@@ -1,17 +1,17 @@
-import type { SupplierSignal } from "../placeholder/dashboard-data";
+import type { ProductionSiteSignal } from "../placeholder/dashboard-data";
 
-export function SupplierSignalsPanel({ signals }: Readonly<{ signals: SupplierSignal[] }>) {
+export function ProductionSiteSignalsPanel({ signals }: Readonly<{ signals: ProductionSiteSignal[] }>) {
   return (
     <div>
       <div className="border-b border-[var(--line)] px-5 py-4">
         <p className="text-xs font-medium text-[var(--muted)]">Association review</p>
-        <h2 className="mt-1 text-lg font-semibold tracking-tight" id="signals-title">Supplier signals</h2>
+        <h2 className="mt-1 text-lg font-semibold tracking-tight" id="signals-title">Production site signals</h2>
       </div>
       <div className="divide-y divide-[var(--line)]">
         {signals.map((signal) => (
-          <article className="px-5 py-4" key={signal.supplier}>
+          <article className="px-5 py-4" key={signal.productionSite}>
             <div className="flex items-baseline justify-between gap-3">
-              <h3 className="text-sm font-semibold">{signal.supplier}</h3>
+              <h3 className="text-sm font-semibold">{signal.productionSite}</h3>
               <span className="font-mono text-xs text-[var(--muted)]">{signal.batches} batches</span>
             </div>
             <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{signal.note}</p>

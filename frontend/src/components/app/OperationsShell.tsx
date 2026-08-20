@@ -10,12 +10,12 @@ import {
   ScanLine,
   Search,
   Settings2,
-  Users
+  Building2
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-type OperationsArea = "dashboard" | "batches";
+type OperationsArea = "dashboard" | "batches" | "production-sites";
 
 type NavigationItem = {
   area?: OperationsArea;
@@ -31,7 +31,7 @@ const primaryNavigation: NavigationItem[] = [
   { count: 2, icon: MessageCircle, label: "WhatsApp review" },
   { icon: BarChart3, label: "Analysis" },
   { count: 3, icon: ScanLine, label: "Investigations" },
-  { icon: Users, label: "Suppliers" }
+  { area: "production-sites", href: "/production-sites", icon: Building2, label: "Production sites" }
 ];
 
 const secondaryNavigation: NavigationItem[] = [

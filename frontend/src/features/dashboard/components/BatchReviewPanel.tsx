@@ -22,11 +22,11 @@ export function BatchReviewPanel({ batch }: Readonly<{ batch: BatchRecord }>) {
         <StatusTag label="Investigation suggested" tone="risk" />
       </div>
       <dl className="grid grid-cols-5 divide-x divide-[var(--line)] border-t border-[var(--line)]">
-        <Definition label="Supplier" value={batch.supplier} />
-        <Definition label="Site" value={batch.productionSite} />
+        <Definition label="Production site" value={batch.productionSite} />
         <Definition label="Lines" value={lineSummary} />
         <Definition label="Process tags" value={tagSummary} />
         <Definition label="Shift" value={batch.shift} />
+        <Definition label="Reported via" value={batch.source} />
       </dl>
       <div className="grid grid-cols-[minmax(0,1fr)_15.5rem] border-t border-[var(--line)]">
         <div className="grid grid-cols-4 divide-x divide-[var(--line)]">

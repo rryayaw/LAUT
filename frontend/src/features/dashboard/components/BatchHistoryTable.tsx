@@ -14,13 +14,13 @@ export function BatchHistoryTable({ batches }: Readonly<{ batches: BatchRecord[]
       <div className="overflow-hidden">
         <table className="w-full border-collapse text-left text-sm">
           <thead className="border-b border-[var(--line)] bg-[var(--surface-subtle)] text-[11px] font-medium text-[var(--muted)]">
-            <tr><th className="px-5 py-3 font-medium">Batch</th><th className="px-4 py-3 font-medium">Supplier</th><th className="px-4 py-3 font-medium">Site and lines</th><th className="px-4 py-3 font-medium">Input</th><th className="px-4 py-3 font-medium">Yield</th><th className="px-4 py-3 font-medium">Status</th></tr>
+            <tr><th className="px-5 py-3 font-medium">Batch</th><th className="px-4 py-3 font-medium">Report context</th><th className="px-4 py-3 font-medium">Site and lines</th><th className="px-4 py-3 font-medium">Input</th><th className="px-4 py-3 font-medium">Yield</th><th className="px-4 py-3 font-medium">Status</th></tr>
           </thead>
           <tbody className="divide-y divide-[var(--line)]">
             {batches.map((batch) => (
               <tr className="transition-colors duration-150 hover:bg-[var(--surface-subtle)]" key={batch.id}>
                 <td className="px-5 py-3.5"><p className="font-mono text-xs font-semibold">{batch.id}</p><p className="mt-1 text-[11px] text-[var(--muted)]">{batch.receivedAt}</p></td>
-                <td className="px-4 py-3.5"><p className="font-medium">{batch.supplier}</p><p className="mt-1 text-[11px] text-[var(--muted)]">{batch.source} · {batch.shift}</p></td>
+                <td className="px-4 py-3.5"><p className="font-medium">{batch.product}</p><p className="mt-1 text-[11px] text-[var(--muted)]">{batch.source} · {batch.shift}</p></td>
                 <td className="px-4 py-3.5"><p className="text-xs font-medium text-[var(--ink)]">{batch.productionLines.join(", ")}</p><p className="mt-1 text-[11px] text-[var(--muted)]">{batch.productionSite}</p></td>
                 <td className="px-4 py-3.5 font-mono text-xs">{batch.inputKg} kg</td>
                 <td className={`px-4 py-3.5 font-mono text-xs font-semibold ${batch.yieldPct < batch.baselinePct - 2 ? "text-[var(--risk)]" : "text-[var(--brand)]"}`}>{batch.yieldPct}%</td>
