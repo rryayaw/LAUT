@@ -41,6 +41,7 @@ model ProcessingSite {
   updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
   owner           Profile          @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   productionUnits ProductionUnit[]
+  processTags     ProcessTag[]
 
   @@index([ownerId])
   @@map("processing_sites")
@@ -57,9 +58,42 @@ model ProductionUnit {
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
   processingSite   ProcessingSite @relation(fields: [processingSiteId], references: [id], onDelete: Cascade)
+  processTagLinks  ProductionUnitProcessTag[]
 
   @@unique([processingSiteId, name])
+  @@unique([id, processingSiteId])
   @@index([processingSiteId])
   @@map("production_units")
+  @@schema("public")
+}
+
+model ProcessTag {
+  id               String                     @id @default(uuid()) @db.Uuid
+  processingSiteId String                     @map("processing_site_id") @db.Uuid
+  name             String                     @db.Text
+  description      String?                    @db.Text
+  createdAt        DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  processingSite   ProcessingSite             @relation(fields: [processingSiteId], references: [id], onDelete: Cascade)
+  productionUnits  ProductionUnitProcessTag[]
+
+  @@unique([processingSiteId, name])
+  @@unique([id, processingSiteId])
+  @@index([processingSiteId])
+  @@map("process_tags")
+  @@schema("public")
+}
+
+model ProductionUnitProcessTag {
+  productionUnitId String         @map("production_unit_id") @db.Uuid
+  processTagId     String         @map("process_tag_id") @db.Uuid
+  processingSiteId String         @map("processing_site_id") @db.Uuid
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  productionUnit   ProductionUnit @relation(fields: [productionUnitId, processingSiteId], references: [id, processingSiteId], onDelete: Cascade)
+  processTag       ProcessTag     @relation(fields: [processTagId, processingSiteId], references: [id, processingSiteId], onDelete: Cascade)
+
+  @@id([productionUnitId, processTagId])
+  @@index([processTagId])
+  @@map("production_unit_process_tags")
   @@schema("public")
 }
