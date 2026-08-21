@@ -38,13 +38,21 @@
 }
 
 html {
+  height: 100%;
   background: var(--canvas);
   scroll-behavior: smooth;
 }
 
+/*
+ * The app shell is exactly viewport-sized and owns all scrolling. The document
+ * must not scroll: a min-width here would add a horizontal scrollbar, which
+ * shortens the viewport and pushes the whole shell (sidebar included) into a
+ * vertical scroll. Minimum content width lives on the content pane instead.
+ */
 body {
-  min-width: 1180px;
+  height: 100%;
   margin: 0;
+  overflow: hidden;
   background: var(--canvas);
 }
 

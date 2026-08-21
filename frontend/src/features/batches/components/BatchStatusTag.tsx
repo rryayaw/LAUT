@@ -1,15 +1,27 @@
-import type { BatchLedgerStatus } from "../placeholder/batches-data";
+import { Badge } from "@/components/ui/badge";
+import type { AnomalySeverity, BatchStatus } from "@/types/domain";
 
-const statusLabels: Record<BatchLedgerStatus, string> = {
-  analyzed: "Analyzed",
-  confirmed: "Confirmed",
+const statusLabels: Record<BatchStatus, string> = {
+  draft: "Draft",
   needs_confirmation: "Needs confirmation",
-  review: "Requires review"
+  confirmed: "Confirmed",
+  analyzed: "Analyzed",
+  closed: "Closed",
+  canceled: "Canceled"
 };
 
-export function BatchStatusTag({ status }: Readonly<{ status: BatchLedgerStatus }>) {
-  const isReview = status === "review";
-  const isPending = status === "needs_confirmation";
+export function BatchStatusTag({ status }: Readonly<{ status: BatchStatus }>) {
+  const tone = status === "draft" || status === "needs_confirmation" ? "neutral" : "brand";
+  return <Badge tone={tone}>{statusLabels[status]}</Badge>;
+}
 
-  return <span className={`inline-flex whitespace-nowrap border px-2 py-1 text-[11px] font-medium ${isReview ? "border-[var(--risk-line)] bg-[var(--risk-soft)] text-[var(--risk)]" : isPending ? "border-[var(--line-strong)] bg-[var(--surface-subtle)] text-[var(--muted)]" : "border-[var(--line-strong)] bg-[var(--surface)] text-[var(--brand)]"}`}>{statusLabels[status]}</span>;
+const severityLabels: Record<AnomalySeverity, string> = {
+  normal: "Normal",
+  watch: "Watch",
+  abnormal: "Abnormal"
+};
+
+export function AnomalyTag({ severity }: Readonly<{ severity: AnomalySeverity }>) {
+  const tone = severity === "abnormal" ? "risk" : severity === "watch" ? "neutral" : "brand";
+  return <Badge tone={tone}>{severityLabels[severity]}</Badge>;
 }

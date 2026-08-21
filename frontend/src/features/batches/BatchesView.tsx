@@ -1,80 +1,125 @@
 "use client";
 
 import { useState } from "react";
-import { ListFilter } from "lucide-react";
+import { AsyncBoundary } from "@/components/app/AsyncBoundary";
 import { OperationsShell } from "@/components/app/OperationsShell";
-import { Button } from "@/components/ui/button";
-import { BatchesLedgerTable } from "./components/BatchesLedgerTable";
+import { PageHeader } from "@/components/app/PageHeader";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAsyncData } from "@/hooks/useAsyncData";
+import type { BatchStatus } from "@/types/domain";
+import { listProductionSites } from "@/features/production-sites/api/production-sites.api";
+import { listProductConfigs } from "@/features/processing-config/api/processing-config.api";
+import { confirmBatch, createBatch, listBatches, type CreateBatchInput } from "./api/batches.api";
 import { BatchEntryDialog } from "./components/BatchEntryDialog";
-import type { BatchEntryValues } from "./components/BatchEntryDialog";
+import { BatchesLedgerTable } from "./components/BatchesLedgerTable";
 import { SelectedBatchPanel } from "./components/SelectedBatchPanel";
-import { batchesSnapshot } from "./placeholder/batches-data";
-import type { BatchLedgerRecord } from "./placeholder/batches-data";
+
+const ALL = "all";
+
+const statusFilters: Array<{ label: string; value: string; statuses?: BatchStatus[] }> = [
+  { label: "All records", value: ALL },
+  { label: "Needs attention", value: "pending", statuses: ["draft", "needs_confirmation"] },
+  { label: "Trusted history", value: "trusted", statuses: ["confirmed", "analyzed", "closed"] }
+];
+
+const selectClass = "mt-2 h-10 rounded-none border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink)] focus:ring-[var(--focus)]";
+const selectContentClass = "rounded-none border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink)]";
+const selectItemClass = "rounded-none focus:bg-[var(--brand-soft)] focus:text-[var(--ink)]";
 
 export function BatchesView() {
-  const [batches, setBatches] = useState<BatchLedgerRecord[]>(batchesSnapshot.batches);
-  const [selectedBatchId, setSelectedBatchId] = useState(batchesSnapshot.selectedBatchId);
-  const selectedBatch = batches.find((batch) => batch.id === selectedBatchId);
+  const [siteFilter, setSiteFilter] = useState(ALL);
+  const [statusFilter, setStatusFilter] = useState(ALL);
+  const [selectedBatchId, setSelectedBatchId] = useState<string>();
 
-  function createBatch(values: BatchEntryValues) {
-    const nextId = Math.max(...batches.map((batch) => Number(batch.id.replace("B-", "")))) + 1;
-    const productionLines = values.productionLineContext.split(",").map((line) => line.trim()).filter(Boolean);
-    const calculatedYield = values.estimatedFilletKg ? (values.estimatedFilletKg / values.inputKg) * 100 : undefined;
+  const statuses = statusFilters.find((filter) => filter.value === statusFilter)?.statuses;
 
-    const batch: BatchLedgerRecord = {
-      id: `B-${nextId}`,
-      fishSpecies: values.fishSpecies,
-      productionSite: values.productionSite,
-      productionLines: productionLines.length > 0 ? productionLines : ["Line context pending"],
-      processTags: [],
-      source: "Web",
-      shift: "Unassigned",
-      inputKg: values.inputKg,
-      filletKg: values.estimatedFilletKg,
-      trimmingKg: values.trimmingKg,
-      rejectKg: values.qualityRejectKg,
-      rejectReason: values.rejectReason,
-      deliveryDelay: values.deliveryDelay,
-      byProductKg: undefined,
-      unexplainedKg: undefined,
-      yieldPct: calculatedYield,
-      baselinePct: undefined,
-      status: "needs_confirmation",
-      receivedAt: "Just now"
-    };
+  const { data: batches, error, isLoading, reload } = useAsyncData(
+    () => listBatches({ siteId: siteFilter === ALL ? undefined : siteFilter, status: statuses }),
+    [siteFilter, statusFilter]
+  );
+  const { data: sites } = useAsyncData(() => listProductionSites(), []);
+  const { data: productConfigs } = useAsyncData(() => listProductConfigs(), []);
 
-    setBatches((current) => [batch, ...current]);
+  const selectedBatch = batches?.find((batch) => batch.id === selectedBatchId) ?? batches?.[0];
+
+  async function handleCreateBatch(values: CreateBatchInput) {
+    const batch = await createBatch(values);
     setSelectedBatchId(batch.id);
+    reload();
   }
 
-  if (!selectedBatch) {
-    return null;
+  async function handleConfirm(batchId: string) {
+    await confirmBatch(batchId);
+    reload();
   }
 
   return (
-    <OperationsShell activeArea="batches">
+    <OperationsShell>
       <a className="skip-link" href="#batches-content">Skip to batch records</a>
       <main className="mx-auto max-w-[92rem] px-7 py-6" id="batches-content" tabIndex={-1}>
-        <header className="flex items-end justify-between gap-8 border-b border-[var(--line)] pb-5">
-          <div>
-            <p className="text-xs font-medium text-[var(--muted)]">Operations / batches</p>
-            <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-[var(--ink)]">Batch records</h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">Confirmed production history across accessible sites, linked lines, and reported process context.</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-3">
-            <p className="text-right text-xs leading-5 text-[var(--muted)]">Current local snapshot<br />19 Aug 2026, 09:42</p>
-            <Button className="h-auto cursor-not-allowed rounded-none border-[var(--line-strong)] bg-[var(--surface)] px-3 py-2 text-[var(--muted)] opacity-65 shadow-none" disabled title="Filters are not included in this mockup" type="button" variant="outline">
-              <ListFilter aria-hidden="true" size={15} strokeWidth={1.75} />
-              Filter records
-            </Button>
-            <BatchEntryDialog onCreateBatch={createBatch} />
-          </div>
-        </header>
+        <PageHeader
+          actions={
+            <BatchEntryDialog
+              onCreateBatch={handleCreateBatch}
+              productConfigs={productConfigs ?? []}
+              sites={sites ?? []}
+            />
+          }
+          breadcrumb="Operations / batches"
+          description="Every reported batch, the lines it ran on, and how its yield compares with similar historical batches."
+          meta={
+            <div className="flex items-end gap-3">
+              <div className="w-52">
+                <Label className="text-xs font-medium text-[var(--muted)]" htmlFor="batch-site-filter">Production site</Label>
+                <Select onValueChange={setSiteFilter} value={siteFilter}>
+                  <SelectTrigger className={selectClass} id="batch-site-filter"><SelectValue /></SelectTrigger>
+                  <SelectContent className={selectContentClass}>
+                    <SelectItem className={selectItemClass} value={ALL}>All sites</SelectItem>
+                    {(sites ?? []).map((site) => (
+                      <SelectItem className={selectItemClass} key={site.id} value={site.id}>{site.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="w-48">
+                <Label className="text-xs font-medium text-[var(--muted)]" htmlFor="batch-status-filter">Record state</Label>
+                <Select onValueChange={setStatusFilter} value={statusFilter}>
+                  <SelectTrigger className={selectClass} id="batch-status-filter"><SelectValue /></SelectTrigger>
+                  <SelectContent className={selectContentClass}>
+                    {statusFilters.map((filter) => (
+                      <SelectItem className={selectItemClass} key={filter.value} value={filter.value}>{filter.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          }
+          title="Batch records"
+        />
 
-        <section className="mt-6 grid grid-cols-12 gap-6">
-          <div className="col-span-8"><BatchesLedgerTable batches={batches} selectedBatchId={selectedBatch.id} totalRecordCount={batchesSnapshot.totalTrustedBatches + batches.length - batchesSnapshot.batches.length} /></div>
-          <div className="col-span-4"><SelectedBatchPanel batch={selectedBatch} /></div>
-        </section>
+        <div className="mt-6">
+          <AsyncBoundary
+            emptyMessage="No batches match the current filters. Record a batch or widen the filter."
+            emptyTitle="No batches to show"
+            error={error}
+            isEmpty={(batches?.length ?? 0) === 0}
+            isLoading={isLoading}
+          >
+            <div className="grid grid-cols-12 gap-6">
+              <div className="col-span-8">
+                <BatchesLedgerTable
+                  batches={batches ?? []}
+                  onSelectBatch={setSelectedBatchId}
+                  selectedBatchId={selectedBatch?.id}
+                />
+              </div>
+              <div className="col-span-4">
+                {selectedBatch ? <SelectedBatchPanel batch={selectedBatch} onConfirm={handleConfirm} /> : null}
+              </div>
+            </div>
+          </AsyncBoundary>
+        </div>
       </main>
     </OperationsShell>
   );

@@ -1,56 +1,166 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, GitBranch, MapPin } from "lucide-react";
+import { Building2, Cog, GitBranch, MapPin } from "lucide-react";
+import { AsyncBoundary } from "@/components/app/AsyncBoundary";
 import { OperationsShell } from "@/components/app/OperationsShell";
+import { PageHeader } from "@/components/app/PageHeader";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAsyncData } from "@/hooks/useAsyncData";
+import type { ProductionSite } from "@/types/domain";
+import {
+  createMachine,
+  createProductionLine,
+  createProductionSite,
+  listProcessTags,
+  listProductionSites,
+  type CreateMachineInput,
+  type CreateProductionLineInput,
+  type CreateProductionSiteInput
+} from "./api/production-sites.api";
 import { AddProductionLineDialog, AddProductionSiteDialog } from "./components/ProductionSiteDialogs";
+import { ProductionLinePanel } from "./components/ProductionLinePanel";
 import { ProductionLinesLedger } from "./components/ProductionLinesLedger";
-import { productionSitesSnapshot } from "./placeholder/production-sites-data";
-import type { ProductionLine, ProductionLineStatus, ProductionSite } from "./placeholder/production-sites-data";
 
 export function ProductionSitesView() {
-  const [sites, setSites] = useState<ProductionSite[]>(productionSitesSnapshot.sites);
-  const [selectedSiteId, setSelectedSiteId] = useState("");
-  const selectedSite = sites.find((site) => site.id === selectedSiteId);
+  const { data: sites, error, isLoading, reload } = useAsyncData(() => listProductionSites(), []);
+  const { data: processTags } = useAsyncData(() => listProcessTags(), []);
 
-  function addSite(values: { location: string; name: string }) {
-    const site: ProductionSite = { id: values.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""), lines: [], location: values.location, name: values.name };
-    setSites((current) => [...current, site]);
+  const [selectedSiteId, setSelectedSiteId] = useState<string>();
+  const [selectedLineId, setSelectedLineId] = useState<string>();
+
+  const selectedSite = sites?.find((site) => site.id === selectedSiteId) ?? sites?.[0];
+  const selectedLine =
+    selectedSite?.lines.find((line) => line.id === selectedLineId) ?? selectedSite?.lines[0];
+
+  async function handleAddSite(values: CreateProductionSiteInput) {
+    const site = await createProductionSite(values);
     setSelectedSiteId(site.id);
+    setSelectedLineId(undefined);
+    reload();
   }
 
-  function addLine(values: { name: string; status: ProductionLineStatus; tags: string[] }) {
+  async function handleAddLine(values: CreateProductionLineInput) {
     if (!selectedSite) return;
-    const line: ProductionLine = { id: `${selectedSite.id}-${values.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, name: values.name, status: values.status, tags: values.tags };
-    setSites((current) => current.map((site) => site.id === selectedSite.id ? { ...site, lines: [...site.lines, line] } : site));
+    const line = await createProductionLine(selectedSite.id, values);
+    setSelectedLineId(line.id);
+    reload();
+  }
+
+  async function handleAddMachine(values: CreateMachineInput) {
+    if (!selectedLine) return;
+    await createMachine(selectedLine.id, values);
+    reload();
   }
 
   return (
-    <OperationsShell activeArea="production-sites">
+    <OperationsShell>
       <a className="skip-link" href="#production-sites-content">Skip to production sites</a>
       <main className="mx-auto max-w-[92rem] px-7 py-6" id="production-sites-content" tabIndex={-1}>
-        <header className="flex items-end justify-between gap-8 border-b border-[var(--line)] pb-5"><div><p className="text-xs font-medium text-[var(--muted)]">Operations / production sites</p><h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-[var(--ink)]">Production sites</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--muted)]">Select a site to inspect its operational lines, process tags, and current line status.</p></div><div className="flex shrink-0 items-end gap-3"><div className="w-72"><Label className="text-xs font-medium text-[var(--muted)]" htmlFor="production-site-select">Production site</Label><Select onValueChange={setSelectedSiteId} value={selectedSiteId}><SelectTrigger className="mt-2 h-10 rounded-none border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink)] focus:ring-[var(--focus)]" id="production-site-select"><SelectValue placeholder="Choose production site" /></SelectTrigger><SelectContent className="rounded-none border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink)]">{sites.map((site) => <SelectItem className="rounded-none focus:bg-[var(--brand-soft)] focus:text-[var(--ink)]" key={site.id} value={site.id}>{site.name}</SelectItem>)}</SelectContent></Select></div><AddProductionSiteDialog onAddSite={addSite} /></div></header>
+        <PageHeader
+          actions={<AddProductionSiteDialog onAddSite={handleAddSite} />}
+          breadcrumb="Operations / production sites"
+          description="One site is a physical plant. Each site runs production lines, and each line has its own process tags, machines, and saved operating context."
+          meta={
+            sites && sites.length > 0 ? (
+              <div className="w-64">
+                <Label className="text-xs font-medium text-[var(--muted)]" htmlFor="production-site-select">
+                  Production site
+                </Label>
+                <Select
+                  onValueChange={(value) => {
+                    setSelectedSiteId(value);
+                    setSelectedLineId(undefined);
+                  }}
+                  value={selectedSite?.id ?? ""}
+                >
+                  <SelectTrigger
+                    className="mt-2 h-10 rounded-none border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink)] focus:ring-[var(--focus)]"
+                    id="production-site-select"
+                  >
+                    <SelectValue placeholder="Choose production site" />
+                  </SelectTrigger>
+                  <SelectContent className="rounded-none border-[var(--line-strong)] bg-[var(--surface)] text-[var(--ink)]">
+                    {sites.map((site) => (
+                      <SelectItem className="rounded-none focus:bg-[var(--brand-soft)] focus:text-[var(--ink)]" key={site.id} value={site.id}>
+                        {site.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : undefined
+          }
+          title="Production sites"
+        />
 
-        {selectedSite ? <SelectedSiteWorkspace onAddLine={addLine} site={selectedSite} /> : <ProductionSitesEmptyState />}
+        <div className="mt-6">
+          <AsyncBoundary
+            emptyMessage="Add a production site to begin configuring lines, tags, and machines."
+            emptyTitle="No production sites yet"
+            error={error}
+            isEmpty={!selectedSite}
+            isLoading={isLoading}
+          >
+            {selectedSite ? (
+              <div className="grid grid-cols-12 gap-6">
+                <div className="col-span-8">
+                  <div className="mb-4 flex items-end justify-between gap-5">
+                    <SiteSummary site={selectedSite} />
+                    <AddProductionLineDialog onAddLine={handleAddLine} processTags={processTags ?? []} />
+                  </div>
+                  <ProductionLinesLedger
+                    lines={selectedSite.lines}
+                    onSelectLine={setSelectedLineId}
+                    processTags={processTags ?? []}
+                    selectedLineId={selectedLine?.id}
+                  />
+                </div>
+                <div className="col-span-4">
+                  {selectedLine ? (
+                    <ProductionLinePanel line={selectedLine} onAddMachine={handleAddMachine} processTags={processTags ?? []} />
+                  ) : (
+                    <aside className="flex min-h-[20rem] flex-col items-center justify-center gap-3 border-y border-[var(--line)] bg-[var(--surface)] px-6 text-center">
+                      <GitBranch aria-hidden="true" className="text-[var(--brand)]" size={22} strokeWidth={1.5} />
+                      <p className="text-sm font-semibold text-[var(--ink)]">No production line selected</p>
+                      <p className="max-w-xs text-xs leading-5 text-[var(--muted)]">
+                        Add a line to this site, then select it to record what it does and which machines run on it.
+                      </p>
+                    </aside>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </AsyncBoundary>
+        </div>
       </main>
     </OperationsShell>
   );
 }
 
-function ProductionSitesEmptyState() {
-  return <section className="mt-6 flex min-h-[32rem] flex-col items-center justify-center border-y border-[var(--line)] bg-[var(--surface)] text-center"><Building2 aria-hidden="true" className="text-[var(--brand)]" size={28} strokeWidth={1.5} /><h2 className="mt-4 text-xl font-semibold tracking-tight text-[var(--ink)]">No production site selected</h2><p className="mt-2 max-w-md text-sm leading-6 text-[var(--muted)]">Choose a production site above to review the lines operating there, or add a new site to begin local setup.</p></section>;
-}
-
-function SelectedSiteWorkspace({ onAddLine, site }: Readonly<{ onAddLine: (values: { name: string; status: ProductionLineStatus; tags: string[] }) => void; site: ProductionSite }>) {
+function SiteSummary({ site }: Readonly<{ site: ProductionSite }>) {
   const activeLines = site.lines.filter((line) => line.status === "active").length;
-  const pausedLines = site.lines.filter((line) => line.status === "paused").length;
-  const maintenanceLines = site.lines.filter((line) => line.status === "maintenance").length;
+  const machineCount = site.lines.reduce((total, line) => total + line.machines.length, 0);
 
-  return <section className="mt-6 grid grid-cols-12 gap-6"><div className="col-span-8"><div className="mb-4 flex items-center justify-between gap-5"><div><p className="text-xs font-medium text-[var(--muted)]">Selected site</p><h2 className="mt-1 text-xl font-semibold tracking-tight">{site.name}</h2></div><AddProductionLineDialog onAddLine={onAddLine} /></div><ProductionLinesLedger lines={site.lines} /></div><aside className="col-span-4 border-y border-[var(--line)] bg-[var(--surface)]"><div className="border-b border-[var(--line)] px-5 py-4"><p className="text-xs font-medium text-[var(--muted)]">Site profile</p><h2 className="mt-1 text-lg font-semibold tracking-tight">{site.name}</h2></div><div className="border-b border-[var(--line)] px-5 py-4"><div className="flex gap-3"><MapPin aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--brand)]" size={16} strokeWidth={1.75} /><div><p className="text-sm font-medium">{site.location}</p><p className="mt-1 text-xs leading-5 text-[var(--muted)]">Physical production site</p></div></div></div><dl className="grid grid-cols-2 divide-x divide-y divide-[var(--line)]"><SiteMetric label="Production lines" value={site.lines.length} /><SiteMetric label="Active" value={activeLines} /><SiteMetric label="Paused" value={pausedLines} /><SiteMetric label="Maintenance" value={maintenanceLines} /></dl><div className="px-5 py-4"><div className="flex items-center gap-2 text-xs font-medium text-[var(--muted)]"><GitBranch aria-hidden="true" size={14} strokeWidth={1.75} />Operational context</div><p className="mt-2 text-xs leading-5 text-[var(--muted)]">Line tags become structured context for comparable-batch filtering and investigation evidence after confirmation.</p></div></aside></section>;
-}
-
-function SiteMetric({ label, value }: Readonly<{ label: string; value: number }>) {
-  return <div className="px-4 py-3.5"><dt className="text-xs text-[var(--muted)]">{label}</dt><dd className="mt-1 font-mono text-lg font-semibold text-[var(--ink)]">{value}</dd></div>;
+  return (
+    <div className="min-w-0">
+      <p className="text-xs font-medium text-[var(--muted)]">Selected site</p>
+      <h2 className="mt-1 text-xl font-semibold tracking-tight">{site.name}</h2>
+      <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-[var(--muted)]">
+        <span className="inline-flex items-center gap-1.5">
+          <MapPin aria-hidden="true" size={13} strokeWidth={1.75} />
+          {site.location}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Building2 aria-hidden="true" size={13} strokeWidth={1.75} />
+          {site.lines.length} lines · {activeLines} active
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Cog aria-hidden="true" size={13} strokeWidth={1.75} />
+          {machineCount} machines
+        </span>
+      </div>
+    </div>
+  );
 }

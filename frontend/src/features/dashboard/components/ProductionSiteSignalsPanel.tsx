@@ -1,4 +1,4 @@
-import type { ProductionSiteSignal } from "../placeholder/dashboard-data";
+import type { ProductionSiteSignal } from "../types/dashboard.types";
 
 export function ProductionSiteSignalsPanel({ signals }: Readonly<{ signals: ProductionSiteSignal[] }>) {
   return (
@@ -16,17 +16,25 @@ export function ProductionSiteSignalsPanel({ signals }: Readonly<{ signals: Prod
             </div>
             <p className="mt-2 text-xs leading-5 text-[var(--muted)]">{signal.note}</p>
             <dl className="mt-3 grid grid-cols-3 border-t border-[var(--line)] pt-3">
-              <SignalStat label="Median" value={`${signal.medianYield}%`} />
+              <SignalStat label="Median yield" value={`${signal.medianYield}%`} />
               <SignalStat label="Reject" value={`${signal.rejectRate}%`} />
               <SignalStat label="Delayed" value={`${signal.delayRate}%`} />
             </dl>
           </article>
         ))}
       </div>
+      <p className="border-t border-[var(--line)] px-5 py-3 text-[11px] leading-4 text-[var(--muted)]">
+        Figures describe what co-occurred across trusted batches. They are not evidence of cause.
+      </p>
     </div>
   );
 }
 
 function SignalStat({ label, value }: Readonly<{ label: string; value: string }>) {
-  return <div><dt className="text-[10px] font-medium text-[var(--muted)]">{label}</dt><dd className="mt-1 font-mono text-xs font-semibold">{value}</dd></div>;
+  return (
+    <div>
+      <dt className="text-[10px] font-medium text-[var(--muted)]">{label}</dt>
+      <dd className="mt-1 font-mono text-xs font-semibold">{value}</dd>
+    </div>
+  );
 }
