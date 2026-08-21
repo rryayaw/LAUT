@@ -1,0 +1,2 @@
+create index production_batch_lines_batch_site_idx
+  on public.production_batch_lines(production_batch_id, manufacturing_site_id);

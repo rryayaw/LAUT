@@ -26,13 +26,13 @@ model Profile {
   createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
   authUser    AuthUser         @relation(fields: [id], references: [id], onDelete: Cascade)
-  sites       ProcessingSite[]
+  sites       ManufacturingSite[]
 
   @@map("profiles")
   @@schema("public")
 }
 
-model ProcessingSite {
+model ManufacturingSite {
   id              String           @id @default(uuid()) @db.Uuid
   name            String           @db.Text
   timezone        String           @default("Asia/Jakarta") @db.Text
@@ -40,55 +40,109 @@ model ProcessingSite {
   createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
   owner           Profile          @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  productionUnits ProductionUnit[]
+  productionLines ProductionLine[]
+  productionBatches ProductionBatch[]
 
   @@index([ownerId])
-  @@map("processing_sites")
+  @@map("manufacturing_sites")
   @@schema("public")
 }
 
-// This existing table represents a production line in the product domain.
-model ProductionUnit {
+model ProductionLine {
   id               String         @id @default(uuid()) @db.Uuid
-  processingSiteId String         @map("processing_site_id") @db.Uuid
+  manufacturingSiteId String      @map("manufacturing_site_id") @db.Uuid
   name             String         @db.Text
   description      String?        @db.Text
   isActive         Boolean        @default(true) @map("is_active")
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
-  processingSite   ProcessingSite @relation(fields: [processingSiteId], references: [id], onDelete: Cascade)
-  processTagLinks  ProductionUnitProcessTag[]
+  manufacturingSite ManufacturingSite @relation(fields: [manufacturingSiteId], references: [id], onDelete: Cascade)
+  capabilityTagLinks ProductionLineCapabilityTag[]
+  batchLinks       ProductionBatchLine[]
 
-  @@unique([processingSiteId, name])
-  @@unique([id, processingSiteId])
-  @@index([processingSiteId])
-  @@map("production_units")
+  @@unique([manufacturingSiteId, name])
+  @@unique([id, manufacturingSiteId])
+  @@index([manufacturingSiteId])
+  @@map("production_lines")
   @@schema("public")
 }
 
-model ProcessTag {
+model CapabilityTag {
   id              String                     @id @default(uuid()) @db.Uuid
   code            String                     @unique @db.Text
   label           String                     @unique @db.Text
   description     String?                    @db.Text
   createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(6)
-  productionUnits ProductionUnitProcessTag[]
+  productionLines ProductionLineCapabilityTag[]
 
-  @@map("process_tags")
+  @@map("capability_tags")
   @@schema("public")
 }
 
-model ProductionUnitProcessTag {
-  productionUnitId String         @map("production_unit_id") @db.Uuid
-  processTagId     String         @map("process_tag_id") @db.Uuid
+model ProductionLineCapabilityTag {
+  productionLineId String         @map("production_line_id") @db.Uuid
+  capabilityTagId  String         @map("capability_tag_id") @db.Uuid
   otherContext     String?        @map("other_context") @db.Text
   createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
-  productionUnit   ProductionUnit @relation(fields: [productionUnitId], references: [id], onDelete: Cascade)
-  processTag       ProcessTag     @relation(fields: [processTagId], references: [id], onDelete: Restrict)
+  productionLine   ProductionLine @relation(fields: [productionLineId], references: [id], onDelete: Cascade)
+  capabilityTag    CapabilityTag  @relation(fields: [capabilityTagId], references: [id], onDelete: Restrict)
 
-  @@id([productionUnitId, processTagId])
-  @@index([processTagId])
-  @@map("production_unit_process_tags")
+  @@id([productionLineId, capabilityTagId])
+  @@index([capabilityTagId])
+  @@map("production_line_capability_tags")
+  @@schema("public")
+}
+
+model ProductionBatch {
+  id                        String                @id @default(uuid()) @db.Uuid
+  manufacturingSiteId       String                @map("manufacturing_site_id") @db.Uuid
+  status                    String                @default("draft") @db.Text
+  sourceChannel             String                @default("web") @map("source_channel") @db.Text
+  batchReference            String?               @map("batch_reference") @db.Text
+  productionDate            DateTime              @default(now()) @map("production_date") @db.Date
+  species                   String?               @db.Text
+  productSpecification      String?               @map("product_specification") @db.Text
+  rawInputKg                Decimal?              @map("raw_input_kg") @db.Decimal(14, 3)
+  sellableOutputKg          Decimal?              @map("sellable_output_kg") @db.Decimal(14, 3)
+  trimmingKg                Decimal?              @map("trimming_kg") @db.Decimal(14, 3)
+  qualityRejectKg           Decimal?              @map("quality_reject_kg") @db.Decimal(14, 3)
+  byproductKg               Decimal?              @map("byproduct_kg") @db.Decimal(14, 3)
+  spoilageKg                Decimal?              @map("spoilage_kg") @db.Decimal(14, 3)
+  otherLossKg               Decimal?              @map("other_loss_kg") @db.Decimal(14, 3)
+  supplier                  String?               @db.Text
+  shift                     String?               @db.Text
+  fishSizeCategory          String?               @map("fish_size_category") @db.Text
+  storageState              String?               @map("storage_state") @db.Text
+  receivingCondition        String?               @map("receiving_condition") @db.Text
+  receivingTemperatureC     Decimal?              @map("receiving_temperature_c") @db.Decimal(5, 2)
+  deliveryDelayMinutes      Int?                  @map("delivery_delay_minutes")
+  productionDurationMinutes Int?                  @map("production_duration_minutes")
+  operatorNotes             String?               @map("operator_notes") @db.Text
+  confirmedAt               DateTime?             @map("confirmed_at") @db.Timestamptz(6)
+  createdAt                 DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                 DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
+  manufacturingSite         ManufacturingSite     @relation(fields: [manufacturingSiteId], references: [id], onDelete: Restrict)
+  lineLinks                 ProductionBatchLine[]
+
+  @@unique([id, manufacturingSiteId])
+  @@index([manufacturingSiteId, status, productionDate])
+  @@map("production_batch")
+  @@schema("public")
+}
+
+model ProductionBatchLine {
+  productionBatchId   String          @map("production_batch_id") @db.Uuid
+  productionLineId    String          @map("production_line_id") @db.Uuid
+  manufacturingSiteId String          @map("manufacturing_site_id") @db.Uuid
+  sequence            Int?
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  productionBatch     ProductionBatch @relation(fields: [productionBatchId, manufacturingSiteId], references: [id, manufacturingSiteId], onDelete: Cascade)
+  productionLine      ProductionLine  @relation(fields: [productionLineId, manufacturingSiteId], references: [id, manufacturingSiteId], onDelete: Restrict)
+
+  @@id([productionBatchId, productionLineId])
+  @@index([productionBatchId, manufacturingSiteId])
+  @@index([productionLineId, manufacturingSiteId])
+  @@map("production_batch_lines")
   @@schema("public")
 }
