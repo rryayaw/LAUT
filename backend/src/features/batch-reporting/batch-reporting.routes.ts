@@ -104,7 +104,7 @@ function route(handler: (request: Request, response: Response) => Promise<void>)
 
 async function assertUserOwnsBatch(userId: string, batchId: string): Promise<DatabaseRow> {
   const rows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
-    `select batch.id, batch.manufacturing_site_id
+    `select batch.id, batch.manufacturing_site_id, batch.status
      from public.production_batch as batch
      join public.manufacturing_sites as site on site.id = batch.manufacturing_site_id
      where batch.id = $1::uuid and site.owner_id = $2::uuid
@@ -180,6 +180,10 @@ function validateBatch(row: DatabaseRow, linkedLineCount: number) {
 
   if (linkedLineCount < 1) errors.push("At least one production line is required.");
   if (rawInputKg === null || rawInputKg <= 0) errors.push("rawInputKg must be greater than zero before confirmation.");
+  if (typeof row.species !== "string" || row.species.trim() === "") errors.push("species is required before confirmation.");
+  if (typeof row.product_specification !== "string" || row.product_specification.trim() === "") {
+    errors.push("productSpecification is required before confirmation.");
+  }
   if (sellableOutputKg === null) warnings.push("Sellable output is still missing.");
   if (missingMassFields.length > 0) warnings.push(`Mass balance is incomplete; missing: ${missingMassFields.join(", ")}.`);
   if (massBalanceDifferenceKg !== null && massBalanceDifferenceKg < -0.001) {
@@ -355,5 +359,153 @@ batchReportingRouter.get(
     const batch = rows[0];
     if (!batch) throw new ApiError(404, "Production batch was not found.");
     response.status(200).json({ validation: validateBatch(batch, Number(batch.linked_line_count)) });
+  })
+);
+
+batchReportingRouter.post(
+  "/v1/production-batches/:batchId/confirm",
+  route(async (request, response) => {
+    const user = getAuthenticatedUser(response);
+    const batchId = parseId(request.params.batchId);
+    const ownedBatch = await assertUserOwnsBatch(user.id, batchId);
+    if (ownedBatch.status !== "draft") throw new ApiError(409, "Only draft production batches can be confirmed.");
+
+    const validationRows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+      `select batch.*, count(link.production_line_id)::int as linked_line_count
+       from public.production_batch as batch
+       left join public.production_batch_lines as link on link.production_batch_id = batch.id
+       where batch.id = $1::uuid
+       group by batch.id`,
+      batchId
+    );
+    const batch = validationRows[0];
+    if (!batch) throw new ApiError(404, "Production batch was not found.");
+    const validation = validateBatch(batch, Number(batch.linked_line_count));
+    if (!validation.isReadyToConfirm) {
+      response.status(422).json({ error: "The draft batch is not ready to confirm.", validation });
+      return;
+    }
+
+    const database = requirePrisma();
+    await database.$transaction(async (transaction) => {
+      const confirmed = await transaction.$queryRawUnsafe<DatabaseRow[]>(
+        `update public.production_batch
+         set status = 'confirmed', confirmed_at = now()
+         where id = $1::uuid and status = 'draft'
+         returning id`,
+        batchId
+      );
+      if (!confirmed[0]) throw new ApiError(409, "The production batch was already confirmed.");
+      await transaction.$executeRawUnsafe(
+        `insert into public.production_batch_audit_events (production_batch_id, actor_user_id, event_type, metadata)
+         values ($1::uuid, $2::uuid, 'confirmed', $3::jsonb)`,
+        batchId,
+        user.id,
+        JSON.stringify({ validation })
+      );
+    });
+    response.status(200).json({ productionBatch: await getBatchDetail(batchId), validation });
+  })
+);
+
+batchReportingRouter.get(
+  "/v1/production-batches/:batchId/audit-events",
+  route(async (request, response) => {
+    const user = getAuthenticatedUser(response);
+    const batchId = parseId(request.params.batchId);
+    await assertUserOwnsBatch(user.id, batchId);
+    const rows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+      `select id, event_type, metadata, created_at
+       from public.production_batch_audit_events
+       where production_batch_id = $1::uuid
+       order by created_at asc`,
+      batchId
+    );
+    response.status(200).json({ auditEvents: rows });
+  })
+);
+
+batchReportingRouter.get(
+  "/v1/production-batches/:batchId/comparables",
+  route(async (request, response) => {
+    const user = getAuthenticatedUser(response);
+    const batchId = parseId(request.params.batchId);
+    const subject = await assertUserOwnsBatch(user.id, batchId);
+    if (typeof subject.manufacturing_site_id !== "string") throw new ApiError(500, "Batch site is invalid.");
+
+    const subjectRows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+      `select species, product_specification, fish_size_category, storage_state
+       from public.production_batch
+       where id = $1::uuid`,
+      batchId
+    );
+    const context = subjectRows[0];
+    if (!context || !context.species || !context.product_specification) {
+      throw new ApiError(422, "Species and productSpecification are required before comparable batches can be retrieved.");
+    }
+
+    const rows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+      `with subject_lines as (
+         select production_line_id from public.production_batch_lines where production_batch_id = $1::uuid
+       ), subject_capability_tags as (
+         select distinct line_tag.capability_tag_id
+         from public.production_batch_lines as batch_line
+         join public.production_line_capability_tags as line_tag on line_tag.production_line_id = batch_line.production_line_id
+         where batch_line.production_batch_id = $1::uuid
+       )
+       select candidate.id, candidate.production_date, candidate.species, candidate.product_specification,
+              candidate.fish_size_category, candidate.storage_state, candidate.raw_input_kg, candidate.sellable_output_kg,
+              candidate.trimming_kg, candidate.quality_reject_kg, candidate.byproduct_kg, candidate.spoilage_kg,
+              candidate.other_loss_kg, candidate.confirmed_at,
+              (select count(*)::int from public.production_batch_lines as candidate_line
+               join subject_lines on subject_lines.production_line_id = candidate_line.production_line_id
+               where candidate_line.production_batch_id = candidate.id) as shared_line_count,
+              (select count(distinct candidate_tag.capability_tag_id)::int
+               from public.production_batch_lines as candidate_line
+               join public.production_line_capability_tags as candidate_tag on candidate_tag.production_line_id = candidate_line.production_line_id
+               join subject_capability_tags on subject_capability_tags.capability_tag_id = candidate_tag.capability_tag_id
+               where candidate_line.production_batch_id = candidate.id) as shared_capability_tag_count
+       from public.production_batch as candidate
+       where candidate.status = 'confirmed'
+         and candidate.id <> $1::uuid
+         and candidate.manufacturing_site_id = $2::uuid
+         and candidate.species = $3
+         and candidate.product_specification = $4
+         and ($5::text is null or candidate.fish_size_category is not distinct from $5::text)
+         and ($6::text is null or candidate.storage_state is not distinct from $6::text)
+         and (
+           exists (
+             select 1 from public.production_batch_lines as candidate_line
+             join subject_lines on subject_lines.production_line_id = candidate_line.production_line_id
+             where candidate_line.production_batch_id = candidate.id
+           )
+           or exists (
+             select 1
+             from public.production_batch_lines as candidate_line
+             join public.production_line_capability_tags as candidate_tag on candidate_tag.production_line_id = candidate_line.production_line_id
+             join subject_capability_tags on subject_capability_tags.capability_tag_id = candidate_tag.capability_tag_id
+             where candidate_line.production_batch_id = candidate.id
+           )
+         )
+       order by candidate.production_date desc, candidate.confirmed_at desc
+       limit 100`,
+      batchId,
+      subject.manufacturing_site_id,
+      context.species,
+      context.product_specification,
+      context.fish_size_category ?? null,
+      context.storage_state ?? null
+    );
+    response.status(200).json({
+      appliedCriteria: {
+        manufacturingSiteId: subject.manufacturing_site_id,
+        species: context.species,
+        productSpecification: context.product_specification,
+        fishSizeCategory: context.fish_size_category ?? null,
+        storageState: context.storage_state ?? null,
+        requiresSharedLineOrCapability: true
+      },
+      comparableBatches: rows
+    });
   })
 );

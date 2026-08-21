@@ -27,6 +27,7 @@ model Profile {
   updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
   authUser    AuthUser         @relation(fields: [id], references: [id], onDelete: Cascade)
   sites       ManufacturingSite[]
+  auditEvents ProductionBatchAuditEvent[]
 
   @@map("profiles")
   @@schema("public")
@@ -124,6 +125,7 @@ model ProductionBatch {
   updatedAt                 DateTime              @updatedAt @map("updated_at") @db.Timestamptz(6)
   manufacturingSite         ManufacturingSite     @relation(fields: [manufacturingSiteId], references: [id], onDelete: Restrict)
   lineLinks                 ProductionBatchLine[]
+  auditEvents               ProductionBatchAuditEvent[]
 
   @@unique([id, manufacturingSiteId])
   @@index([manufacturingSiteId, status, productionDate])
@@ -144,5 +146,21 @@ model ProductionBatchLine {
   @@index([productionBatchId, manufacturingSiteId])
   @@index([productionLineId, manufacturingSiteId])
   @@map("production_batch_lines")
+  @@schema("public")
+}
+
+model ProductionBatchAuditEvent {
+  id                String          @id @default(uuid()) @db.Uuid
+  productionBatchId String          @map("production_batch_id") @db.Uuid
+  actorUserId       String          @map("actor_user_id") @db.Uuid
+  eventType         String          @map("event_type") @db.Text
+  metadata          Json            @default("{}") @db.JsonB
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  productionBatch   ProductionBatch @relation(fields: [productionBatchId], references: [id], onDelete: Restrict)
+  actorUser         Profile         @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([productionBatchId, createdAt(sort: Desc)])
+  @@index([actorUserId])
+  @@map("production_batch_audit_events")
   @@schema("public")
 }

@@ -1,0 +1,2 @@
+create index production_batch_audit_events_actor_user_id_idx
+  on public.production_batch_audit_events(actor_user_id);
