@@ -1,5 +1,5 @@
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import { ChatOpenAI } from "@langchain/openai";
+import { ChatGoogle } from "@langchain/google/node";
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { z } from "zod";
 import { env } from "../../config/env.js";
@@ -72,8 +72,8 @@ function assess(evidence: AnalysisEvidence): DeterministicAssessment {
 }
 
 async function generateGuidance(evidence: AnalysisEvidence, assessment: DeterministicAssessment): Promise<InvestigationGuidance> {
-  if (!env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY is not configured.");
-  const model = new ChatOpenAI({ apiKey: env.OPENAI_API_KEY, model: env.OPENAI_MODEL, temperature: 0 });
+  if (!env.GOOGLE_API_KEY) throw new Error("GOOGLE_API_KEY is not configured.");
+  const model = new ChatGoogle({ apiKey: env.GOOGLE_API_KEY, model: env.GEMINI_MODEL, maxRetries: 2 });
   const structuredModel = model.withStructuredOutput(GuidanceSchema, { name: "laut_investigation_guidance" });
   return structuredModel.invoke([
     new SystemMessage(`You are LAUT's seafood-production investigation assistant. Use only the supplied evidence. Do not invent values, causes, food-safety diagnoses, supplier actions, or certainty. Describe associations as items to investigate. Recommendations must require human review.`),
@@ -85,7 +85,7 @@ const graph = new StateGraph(AnalysisState)
   .addNode("calculate_assessment", async (state) => ({ assessment: assess(state.evidence) }))
   .addNode("generate_guidance", async (state) => ({ guidance: await generateGuidance(state.evidence, state.assessment) }))
   .addEdge(START, "calculate_assessment")
-  .addConditionalEdges("calculate_assessment", (state) => env.OPENAI_API_KEY && state.assessment.status !== "insufficient_history" ? "generate_guidance" : END)
+  .addConditionalEdges("calculate_assessment", (state) => env.GOOGLE_API_KEY && state.assessment.status !== "insufficient_history" ? "generate_guidance" : END)
   .addEdge("generate_guidance", END)
   .compile();
 
@@ -94,6 +94,6 @@ export async function runProductionAnalysis(evidence: AnalysisEvidence) {
   return {
     assessment: result.assessment,
     guidance: result.guidance,
-    aiStatus: result.guidance ? "generated" : env.OPENAI_API_KEY ? "not_required" : "not_configured"
+    aiStatus: result.guidance ? "generated" : env.GOOGLE_API_KEY ? "not_required" : "not_configured"
   } as const;
 }

@@ -12,8 +12,8 @@ const environmentSchema = z.object({
   DATABASE_URL: z.string().url().optional(),
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_PUBLISHABLE_KEY: optionalSecret,
-  OPENAI_API_KEY: optionalSecret,
-  OPENAI_MODEL: z.string().min(1).default("gpt-4.1-mini")
+  GOOGLE_API_KEY: optionalSecret,
+  GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash-lite")
 });
 
 export const env = environmentSchema.parse(process.env);
