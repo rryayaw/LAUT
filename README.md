@@ -1,26 +1,50 @@
 # LAUT
 
-LAUT is a web-first production intelligence platform for Indonesian seafood processors. It records batch-level yield and loss data, detects abnormal performance among comparable batches, and supports evidence-based investigation.
+LAUT is a production-intelligence platform for Indonesian seafood processors. It helps teams record batch yield and loss data, compare confirmed batches, and investigate abnormal performance.
 
-## Local development
+## Start the frontend
 
-Prerequisites: Docker Desktop with Docker Compose.
+```powershell
+cd frontend
+npm ci
+npm run dev
+```
 
-1. Copy the example environment files:
+Open http://localhost:3000.
 
-   ```powershell
-   Copy-Item frontend/.env.example frontend/.env.local
-   Copy-Item backend/.env.example backend/.env
-   ```
+The current frontend runs from local demo data. Refreshing the page resets changes.
 
-2. Start the local stack:
+## Start the backend
 
-   ```powershell
-   docker compose up --build
-   ```
+```powershell
+cd backend
+npm ci
+Copy-Item .env.example .env
+npm run prisma:generate
+npm run dev
+```
 
-3. Open the applications:
+The health check is available at http://localhost:8000/health.
 
-   - Web: http://localhost:3000
-   - API health check: http://localhost:8000/health
-   - API docs: http://localhost:8000/docs
+For database-backed and authenticated API routes, fill in these values in `backend/.env`:
+
+```env
+DATABASE_URL=postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres
+SUPABASE_URL=https://<project-ref>.supabase.co
+SUPABASE_PUBLISHABLE_KEY=sb_publishable_<key>
+```
+
+To enable AI investigation guidance, also add:
+
+```env
+GOOGLE_API_KEY=<google-ai-studio-key>
+GEMINI_MODEL=gemini-3.5-flash-lite
+```
+
+Never commit real environment files or use a Supabase service-role/secret key in the application.
+
+## Notes
+
+- Supabase migrations in `supabase/migrations/` must be applied to the hosted project before using data routes.
+- `docker-compose.yml` is not the current supported development path; use the separate frontend/backend commands above.
+- Product decisions and detailed implementation status live in local `docs/project.md`.
