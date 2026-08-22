@@ -24,7 +24,7 @@ npm run prisma:generate
 npm run dev
 ```
 
-The health check is available at http://localhost:8000/health.
+The health check is available at http://localhost:8000/health. Interactive endpoint documentation and testing are available at http://localhost:8000/docs.
 
 For database-backed and authenticated API routes, fill in these values in `backend/.env`:
 
