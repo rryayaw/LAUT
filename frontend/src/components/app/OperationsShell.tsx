@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -15,6 +16,8 @@ import {
   Settings2
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import lautLogo from "@/assets/laut-logo.png";
+import lautTitle from "@/assets/laut-title.png";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { listProductionSites } from "@/features/production-sites/api/production-sites.api";
 import { listInvestigations } from "@/features/investigations/api/investigations.api";
@@ -95,8 +98,9 @@ function OperationsSidebar() {
   return (
     <aside className="flex h-full min-h-0 flex-col overflow-y-auto bg-[var(--sidebar)] px-3 py-4 text-[var(--sidebar-text)]">
       <div className="flex items-center gap-3 px-2 py-2">
+        <Image alt="" aria-hidden="true" className="h-10 w-10 shrink-0 object-contain" priority src={lautLogo} />
         <div>
-          <p className="text-base font-semibold tracking-tight">LAUT</p>
+          <Image alt="LAUT" className="h-auto w-[4.75rem] object-contain" priority src={lautTitle} />
           <p className="text-[11px] text-[var(--sidebar-muted)]">Production intelligence</p>
         </div>
       </div>

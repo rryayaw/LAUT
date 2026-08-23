@@ -894,6 +894,10 @@ video {
   width: 0.375rem;
 }
 
+.w-10 {
+  width: 2.5rem;
+}
+
 .w-2 {
   width: 0.5rem;
 }
@@ -940,6 +944,10 @@ video {
 
 .w-9 {
   width: 2.25rem;
+}
+
+.w-\[4\.75rem\] {
+  width: 4.75rem;
 }
 
 .w-full {
@@ -1411,6 +1419,11 @@ video {
 
 .bg-transparent {
   background-color: transparent;
+}
+
+.object-contain {
+  -o-object-fit: contain;
+     object-fit: contain;
 }
 
 .p-0 {
