@@ -1,27 +1,79 @@
-// Production site, line, and machine access.
+// Production site, line, and process-tag access.
 //
-// Reads from `src/placeholder/mock-db`. Swap these bodies for `apiRequest(...)`
-// calls when `/v1/production-sites` exists; no component changes are required.
+// Backed by `/v1/manufacturing-sites`, `/v1/production-lines`, and
+// `/v1/capability-tags`. The backend names these "manufacturing sites" and
+// "capability tags"; the translation to the UI's vocabulary happens here so no
+// component carries two names for one thing.
 
 import type { Machine, ProcessTag, ProductionLine, ProductionLineStatus, ProductionSite, ProcessTagCode } from "@/types/domain";
-import { processTagCatalogue } from "@/placeholder/process-tags";
-import { productionSites } from "@/placeholder/mock-db";
+import { ApiError, apiRequest, toText } from "@/api/client";
+import { cached, invalidateCache } from "@/api/cache";
 
-function clone<T>(value: T): T {
-  return structuredClone(value);
-}
+type SiteRow = { id: string; name: string; timezone: string; location: string | null; notes: string | null };
+type LineRow = { id: string; manufacturing_site_id: string; name: string; description: string | null; is_active: boolean };
+type TagRow = { id: string; code: string; label: string; description: string | null };
 
-export async function listProductionSites(): Promise<ProductionSite[]> {
-  return clone(productionSites);
-}
-
-export async function getProductionSite(siteId: string): Promise<ProductionSite | undefined> {
-  const site = productionSites.find((candidate) => candidate.id === siteId);
-  return site ? clone(site) : undefined;
+function toProcessTag(row: TagRow): ProcessTag {
+  return { id: row.id, code: row.code, label: row.label, description: row.description ?? "" };
 }
 
 export async function listProcessTags(): Promise<ProcessTag[]> {
-  return clone(processTagCatalogue);
+  return cached("capability-tags", async () => {
+    const { capabilityTags } = await apiRequest<{ capabilityTags: TagRow[] }>("/v1/capability-tags");
+    return capabilityTags.map(toProcessTag);
+  });
+}
+
+async function listLineTagCodes(lineId: string): Promise<ProcessTagCode[]> {
+  const { capabilityTags } = await apiRequest<{ capabilityTags: TagRow[] }>(
+    `/v1/production-lines/${lineId}/capability-tags`
+  );
+  return capabilityTags.map((tag) => tag.code);
+}
+
+async function toProductionLine(row: LineRow): Promise<ProductionLine> {
+  return {
+    id: row.id,
+    productionSiteId: row.manufacturing_site_id,
+    description: toText(row.description) ?? "",
+    name: row.name,
+    // The backend stores an active flag rather than a three-state status. A paused
+    // line is the only inactive state it can currently express.
+    status: row.is_active ? "active" : "paused",
+    tagCodes: await listLineTagCodes(row.id),
+    // No machine table exists yet; see `Machine` in `src/types/domain`.
+    machines: []
+  };
+}
+
+async function toProductionSite(row: SiteRow): Promise<ProductionSite> {
+  const { productionLines } = await apiRequest<{ productionLines: LineRow[] }>(
+    `/v1/manufacturing-sites/${row.id}/production-lines`
+  );
+  return {
+    id: row.id,
+    name: row.name,
+    location: toText(row.location) ?? "",
+    timezone: row.timezone,
+    lines: await Promise.all(productionLines.map(toProductionLine))
+  };
+}
+
+/**
+ * Sites, their lines, and each line's tags. The backend exposes these as three
+ * levels of endpoint, so this fans out; it is cached because the shell reads it on
+ * every page.
+ */
+export async function listProductionSites(): Promise<ProductionSite[]> {
+  return cached("production-sites", async () => {
+    const { manufacturingSites } = await apiRequest<{ manufacturingSites: SiteRow[] }>("/v1/manufacturing-sites");
+    return Promise.all(manufacturingSites.map(toProductionSite));
+  });
+}
+
+export async function getProductionSite(siteId: string): Promise<ProductionSite | undefined> {
+  const sites = await listProductionSites();
+  return sites.find((site) => site.id === siteId);
 }
 
 export type CreateProductionSiteInput = {
@@ -30,16 +82,12 @@ export type CreateProductionSiteInput = {
 };
 
 export async function createProductionSite(input: CreateProductionSiteInput): Promise<ProductionSite> {
-  const site: ProductionSite = {
-    id: `site-${slug(input.name)}-${productionSites.length + 1}`,
-    name: input.name,
-    location: input.location,
-    timezone: "Asia/Jakarta",
-    lines: []
-  };
-
-  productionSites.push(site);
-  return clone(site);
+  const { manufacturingSite } = await apiRequest<{ manufacturingSite: SiteRow }>("/v1/manufacturing-sites", {
+    method: "POST",
+    body: { name: input.name, location: toText(input.location) ?? null, timezone: "Asia/Jakarta" }
+  });
+  invalidateCache("production-sites");
+  return { id: manufacturingSite.id, name: manufacturingSite.name, location: toText(manufacturingSite.location) ?? "", timezone: manufacturingSite.timezone, lines: [] };
 }
 
 export type CreateProductionLineInput = {
@@ -53,21 +101,37 @@ export async function createProductionLine(
   siteId: string,
   input: CreateProductionLineInput
 ): Promise<ProductionLine> {
-  const site = productionSites.find((candidate) => candidate.id === siteId);
-  if (!site) throw new Error(`Production site ${siteId} was not found.`);
+  const { productionLine } = await apiRequest<{ productionLine: LineRow }>(
+    `/v1/manufacturing-sites/${siteId}/production-lines`,
+    {
+      method: "POST",
+      body: { name: input.name, description: toText(input.description) ?? null, isActive: input.status === "active" }
+    }
+  );
 
-  const line: ProductionLine = {
-    id: `${siteId}-${slug(input.name)}`,
+  // Tags are assigned by catalogue ID, one request each; the dialog selects codes.
+  const catalogue = await listProcessTags();
+  const assignedCodes: ProcessTagCode[] = [];
+  for (const code of input.tagCodes) {
+    const tag = catalogue.find((candidate) => candidate.code === code);
+    if (!tag) continue;
+    await apiRequest(`/v1/production-lines/${productionLine.id}/capability-tags`, {
+      method: "POST",
+      body: { capabilityTagId: tag.id }
+    });
+    assignedCodes.push(code);
+  }
+
+  invalidateCache("production-sites");
+  return {
+    id: productionLine.id,
     productionSiteId: siteId,
-    name: input.name,
-    description: input.description,
-    status: input.status,
-    tagCodes: input.tagCodes,
+    name: productionLine.name,
+    description: toText(productionLine.description) ?? "",
+    status: productionLine.is_active ? "active" : "paused",
+    tagCodes: assignedCodes,
     machines: []
   };
-
-  site.lines.push(line);
-  return clone(line);
 }
 
 export type CreateMachineInput = {
@@ -77,23 +141,9 @@ export type CreateMachineInput = {
   notes?: string;
 };
 
-export async function createMachine(lineId: string, input: CreateMachineInput): Promise<Machine> {
-  const line = productionSites.flatMap((site) => site.lines).find((candidate) => candidate.id === lineId);
-  if (!line) throw new Error(`Production line ${lineId} was not found.`);
-
-  const machine: Machine = {
-    id: `${lineId}-mch-${line.machines.length + 1}`,
-    productionLineId: lineId,
-    name: input.name,
-    model: input.model,
-    status: input.status,
-    notes: input.notes
-  };
-
-  line.machines.push(machine);
-  return clone(machine);
-}
-
-function slug(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+export async function createMachine(_lineId: string, _input: CreateMachineInput): Promise<Machine> {
+  throw new ApiError(
+    "Machines cannot be saved yet — the backend has no machine endpoint. Record the equipment in the production line description for now.",
+    501
+  );
 }

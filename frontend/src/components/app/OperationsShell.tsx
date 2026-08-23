@@ -8,10 +8,11 @@ import {
   BarChart3,
   Building2,
   ClipboardCheck,
-  Database,
   History,
   LayoutDashboard,
+  LogOut,
   MessageCircle,
+  Plug,
   ScanLine,
   Settings2
 } from "lucide-react";
@@ -19,8 +20,11 @@ import type { LucideIcon } from "lucide-react";
 import lautLogo from "@/assets/laut-logo.png";
 import lautTitle from "@/assets/laut-title.png";
 import { useAsyncData } from "@/hooks/useAsyncData";
+import { AuthGate, useSessionEmail, useSignOut } from "@/features/auth/AuthGate";
 import { listProductionSites } from "@/features/production-sites/api/production-sites.api";
 import { listInvestigations } from "@/features/investigations/api/investigations.api";
+
+const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 type NavigationItem = {
   /** Omitted for areas that are on the map but not built yet. */
@@ -36,17 +40,19 @@ export function OperationsShell({ children }: Readonly<{ children: ReactNode }>)
   // The shell owns the viewport and never scrolls. Only the content pane scrolls,
   // so the sidebar stays put without relying on sticky positioning.
   return (
-    <div className="grid h-[100dvh] grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden bg-[var(--canvas)] text-[var(--ink)]">
-      <OperationsSidebar />
-      <section className="min-w-0 overflow-auto border-l border-[var(--line)]">
-        {/* Keeps the desktop layout intact on narrow windows by scrolling the
-            content pane horizontally, rather than the document. */}
-        <div className="min-w-[59rem]">
-          <OperationsTopBar />
-          {children}
-        </div>
-      </section>
-    </div>
+    <AuthGate>
+      <div className="grid h-[100dvh] grid-cols-[14.5rem_minmax(0,1fr)] overflow-hidden bg-[var(--canvas)] text-[var(--ink)]">
+        <OperationsSidebar />
+        <section className="min-w-0 overflow-auto border-l border-[var(--line)]">
+          {/* Keeps the desktop layout intact on narrow windows by scrolling the
+              content pane horizontally, rather than the document. */}
+          <div className="min-w-[59rem]">
+            <OperationsTopBar />
+            {children}
+          </div>
+        </section>
+      </div>
+    </AuthGate>
   );
 }
 
@@ -68,8 +74,28 @@ function OperationsTopBar() {
           <MessageCircle aria-hidden="true" size={14} strokeWidth={1.75} />
           <span>WhatsApp channel not connected</span>
         </div>
+        <SessionControl />
       </div>
     </header>
+  );
+}
+
+function SessionControl() {
+  const email = useSessionEmail();
+  const signOut = useSignOut();
+
+  return (
+    <div className="flex items-center gap-3 border-l border-[var(--line)] pl-5">
+      <span className="max-w-[14rem] truncate text-xs text-[var(--muted)]">{email ?? "Signed in"}</span>
+      <button
+        className="flex items-center gap-1.5 text-xs text-[var(--muted)] transition-colors duration-150 hover:text-[var(--ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus)]"
+        onClick={() => void signOut()}
+        type="button"
+      >
+        <LogOut aria-hidden="true" size={14} strokeWidth={1.75} />
+        Sign out
+      </button>
+    </div>
   );
 }
 
@@ -121,12 +147,10 @@ function OperationsSidebar() {
 
       <div className="mt-auto border-t border-[var(--sidebar-line)] px-2 pt-4">
         <div className="flex items-center gap-2 text-xs text-[var(--sidebar-muted)]">
-          <Database aria-hidden="true" size={14} strokeWidth={1.75} />
-          <span>Local demo snapshot</span>
+          <Plug aria-hidden="true" size={14} strokeWidth={1.75} />
+          <span>Connected to the LAUT API</span>
         </div>
-        <p className="mt-2 text-xs leading-5 text-[var(--sidebar-muted)]">
-          Reading from an in-memory dataset until the LAUT API is connected.
-        </p>
+        <p className="mt-2 break-all text-xs leading-5 text-[var(--sidebar-muted)]">{apiBaseUrl}</p>
       </div>
     </aside>
   );

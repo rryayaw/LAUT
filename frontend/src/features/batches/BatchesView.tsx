@@ -7,10 +7,18 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAsyncData } from "@/hooks/useAsyncData";
-import type { BatchStatus } from "@/types/domain";
+import { useWriteAction } from "@/hooks/useWriteAction";
+import { WriteErrorBanner } from "@/components/app/WriteErrorBanner";
+import type { BatchQuantities, BatchStatus } from "@/types/domain";
 import { listProductionSites } from "@/features/production-sites/api/production-sites.api";
 import { listProductConfigs } from "@/features/processing-config/api/processing-config.api";
-import { confirmBatch, createBatch, listBatches, type CreateBatchInput } from "./api/batches.api";
+import {
+  confirmBatch,
+  createBatch,
+  listBatches,
+  updateBatchQuantities,
+  type CreateBatchInput
+} from "./api/batches.api";
 import { BatchEntryDialog } from "./components/BatchEntryDialog";
 import { BatchesLedgerTable } from "./components/BatchesLedgerTable";
 import { SelectedBatchPanel } from "./components/SelectedBatchPanel";
@@ -43,15 +51,27 @@ export function BatchesView() {
 
   const selectedBatch = batches?.find((batch) => batch.id === selectedBatchId) ?? batches?.[0];
 
-  async function handleCreateBatch(values: CreateBatchInput) {
+  const create = useWriteAction(async (values: CreateBatchInput) => {
     const batch = await createBatch(values);
     setSelectedBatchId(batch.id);
-    reload();
-  }
+  }, reload);
 
-  async function handleConfirm(batchId: string) {
+  // Confirmation also triggers the backend analysis run, so it can take a moment.
+  const confirm = useWriteAction(async (batchId: string) => {
     await confirmBatch(batchId);
-    reload();
+  }, reload);
+
+  // Only drafts are editable; the backend rejects a change to a confirmed record.
+  const update = useWriteAction(async (batchId: string, quantities: Partial<BatchQuantities>) => {
+    await updateBatchQuantities(batchId, quantities);
+  }, reload);
+
+  const writeError = create.error ?? confirm.error ?? update.error;
+
+  function dismissWriteError() {
+    create.dismissError();
+    confirm.dismissError();
+    update.dismissError();
   }
 
   return (
@@ -61,7 +81,7 @@ export function BatchesView() {
         <PageHeader
           actions={
             <BatchEntryDialog
-              onCreateBatch={handleCreateBatch}
+              onCreateBatch={create.run}
               productConfigs={productConfigs ?? []}
               sites={sites ?? []}
             />
@@ -98,6 +118,8 @@ export function BatchesView() {
           title="Batch records"
         />
 
+        <WriteErrorBanner error={writeError} onDismiss={dismissWriteError} />
+
         <div className="mt-6">
           <AsyncBoundary
             emptyMessage="No batches match the current filters. Record a batch or widen the filter."
@@ -115,7 +137,7 @@ export function BatchesView() {
                 />
               </div>
               <div className="col-span-4">
-                {selectedBatch ? <SelectedBatchPanel batch={selectedBatch} onConfirm={handleConfirm} /> : null}
+                {selectedBatch ? <SelectedBatchPanel batch={selectedBatch} onConfirm={confirm.run} onUpdateQuantities={update.run} /> : null}
               </div>
             </div>
           </AsyncBoundary>

@@ -640,10 +640,6 @@ video {
   top: 50%;
 }
 
-.isolate {
-  isolation: isolate;
-}
-
 .z-10 {
   z-index: 10;
 }
@@ -696,6 +692,10 @@ video {
   margin-bottom: 1rem;
 }
 
+.ml-2 {
+  margin-left: 0.5rem;
+}
+
 .mt-0\.5 {
   margin-top: 0.125rem;
 }
@@ -722,6 +722,10 @@ video {
 
 .mt-4 {
   margin-top: 1rem;
+}
+
+.mt-5 {
+  margin-top: 1.25rem;
 }
 
 .mt-6 {
@@ -866,6 +870,10 @@ video {
   min-height: 0px;
 }
 
+.min-h-\[100dvh\] {
+  min-height: 100dvh;
+}
+
 .min-h-\[18rem\] {
   min-height: 18rem;
 }
@@ -978,12 +986,20 @@ video {
   max-width: 48rem;
 }
 
+.max-w-\[14rem\] {
+  max-width: 14rem;
+}
+
 .max-w-\[32rem\] {
   max-width: 32rem;
 }
 
 .max-w-\[34rem\] {
   max-width: 34rem;
+}
+
+.max-w-\[38rem\] {
+  max-width: 38rem;
 }
 
 .max-w-\[44rem\] {
@@ -1004,6 +1020,10 @@ video {
 
 .max-w-md {
   max-width: 28rem;
+}
+
+.max-w-sm {
+  max-width: 24rem;
 }
 
 .max-w-xl {
@@ -1106,6 +1126,10 @@ video {
 
 .grid-cols-\[minmax\(0\2c 1fr\)_15\.5rem\] {
   grid-template-columns: minmax(0,1fr) 15.5rem;
+}
+
+.flex-row {
+  flex-direction: row;
 }
 
 .flex-col {
@@ -1286,6 +1310,10 @@ video {
 
 .whitespace-nowrap {
   white-space: nowrap;
+}
+
+.break-all {
+  word-break: break-all;
 }
 
 .rounded-md {
@@ -1522,6 +1550,11 @@ video {
   padding-bottom: 1.5rem;
 }
 
+.py-7 {
+  padding-top: 1.75rem;
+  padding-bottom: 1.75rem;
+}
+
 .py-8 {
   padding-top: 2rem;
   padding-bottom: 2rem;
@@ -1533,6 +1566,10 @@ video {
 
 .pl-2 {
   padding-left: 0.5rem;
+}
+
+.pl-5 {
+  padding-left: 1.25rem;
 }
 
 .pl-\[18px\] {
@@ -1573,6 +1610,10 @@ video {
 
 .font-mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.font-sans {
+  font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
 .text-2xl {
@@ -1620,6 +1661,10 @@ video {
 
 .font-medium {
   font-weight: 500;
+}
+
+.font-normal {
+  font-weight: 400;
 }
 
 .font-semibold {
@@ -2042,6 +2087,10 @@ a:focus-visible {
   opacity: 1;
 }
 
+.hover\:opacity-90:hover {
+  opacity: 0.9;
+}
+
 .focus\:bg-\[var\(--brand-soft\)\]:focus {
   background-color: var(--brand-soft);
 }
@@ -2110,6 +2159,10 @@ a:focus-visible {
 
 .disabled\:opacity-50:disabled {
   opacity: 0.5;
+}
+
+.disabled\:opacity-60:disabled {
+  opacity: 0.6;
 }
 
 .group:hover .group-hover\:translate-x-0\.5 {

@@ -36,7 +36,7 @@ export function ProcessingConfigView() {
                     <th className="px-4 py-3 font-medium">Product specification</th>
                     <th className="px-4 py-3 font-medium">State</th>
                     <th className="px-4 py-3 font-medium">Production site</th>
-                    <th className="px-4 py-3 font-medium">Expected yield</th>
+                    <th className="px-4 py-3 font-medium">Observed median yield</th>
                     <th className="px-4 py-3 font-medium">Mass-balance tolerance</th>
                   </tr>
                 </thead>
@@ -47,15 +47,19 @@ export function ProcessingConfigView() {
                       <td className="px-4 py-3.5">{config.productSpec}</td>
                       <td className="px-4 py-3.5"><Badge tone="soft">{config.chilledOrFrozen === "chilled" ? "Chilled" : "Frozen"}</Badge></td>
                       <td className="px-4 py-3.5 text-xs text-[var(--muted)]">{config.siteName}</td>
-                      <td className="px-4 py-3.5 font-mono text-xs font-semibold text-[var(--brand)]">{config.expectedYieldPct}%</td>
+                      <td className="px-4 py-3.5 font-mono text-xs font-semibold text-[var(--brand)]">
+                        {config.observedMedianYieldPct}%
+                        <span className="ml-2 font-sans font-normal text-[var(--muted)]">n={config.sampleSize}</span>
+                      </td>
                       <td className="px-4 py-3.5 font-mono text-xs">±{config.massBalanceTolerancePct}%</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               <p className="border-t border-[var(--line)] px-5 py-3 text-[11px] leading-4 text-[var(--muted)]">
-                Batches are only compared within the same species and specification. The tolerance is operator-set
-                and is never inferred by the AI.
+                Batches are only compared within the same species and specification. The yield shown is the median
+                measured across confirmed batches, not a target — LAUT does not set expectations for a process it has
+                only observed. The tolerance is operator-set and is never inferred by the AI.
               </p>
             </section>
 

@@ -12,8 +12,8 @@ export type AsyncState<T> = {
 /**
  * Reads data from a feature `api/` module.
  *
- * Every view goes through this rather than importing placeholder data directly,
- * so swapping an api module to a real network call needs no component changes.
+ * Every view reads through a feature api module rather than calling the backend
+ * itself, so a change of endpoint shape never reaches a component.
  */
 export function useAsyncData<T>(load: () => Promise<T>, deps: readonly unknown[] = []): AsyncState<T> {
   const [data, setData] = useState<T>();

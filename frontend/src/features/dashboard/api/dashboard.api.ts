@@ -1,13 +1,14 @@
 // Dashboard overview.
 //
-// Every figure below is derived from the shared dataset rather than typed in, so
-// the dashboard stays consistent with the batch ledger as data changes. Replace
-// with a single `/v1/dashboard/overview` call once it exists.
+// Composed from the batch ledger, the saved analyses, and the site list, so every
+// figure stays consistent with what the other pages show. Replace with a single
+// `/v1/dashboard/overview` call once it exists.
 
-import type { BatchListItem, BatchStatus } from "@/types/domain";
-import { lossCategories, productionSites } from "@/placeholder/mock-db";
+import type { BatchListItem, BatchStatus, LossCategoryConfig, ProductionSite } from "@/types/domain";
 import { listBatches } from "@/features/batches/api/batches.api";
 import { listInvestigations } from "@/features/investigations/api/investigations.api";
+import { listProductionSites } from "@/features/production-sites/api/production-sites.api";
+import { listLossCategories } from "@/features/processing-config/api/processing-config.api";
 import type {
   DashboardOverview,
   LossSlice,
@@ -47,12 +48,21 @@ function buildYieldTrend(batches: BatchListItem[]): YieldPoint[] {
     .map(([date, group]) => ({
       label: date.slice(5),
       yieldPct: median(group.map((batch) => batch.analysis.metrics.sellableYieldPct ?? 0)),
-      baselinePct: median(group.map((batch) => batch.analysis.baseline?.medianYieldPct ?? 0)),
+      // Batches with too little comparable history have no baseline; counting them
+      // as zero would drag the line down and invent a gap that was never measured.
+      baselinePct: median(
+        group
+          .map((batch) => batch.analysis.baseline?.medianYieldPct)
+          .filter((value): value is number => value !== undefined)
+      ),
       batchCount: group.length
     }));
 }
 
-function buildLossDistribution(batch: BatchListItem | undefined): LossSlice[] {
+function buildLossDistribution(
+  batch: BatchListItem | undefined,
+  lossCategories: LossCategoryConfig[]
+): LossSlice[] {
   if (!batch) return [];
   const { quantities, analysis } = batch;
   const input = quantities.rawInputKg;
@@ -90,8 +100,8 @@ function buildLossDistribution(batch: BatchListItem | undefined): LossSlice[] {
   return slices;
 }
 
-function buildSiteSignals(batches: BatchListItem[]): ProductionSiteSignal[] {
-  return productionSites.map((site) => {
+function buildSiteSignals(batches: BatchListItem[], sites: ProductionSite[]): ProductionSiteSignal[] {
+  return sites.map((site) => {
     const siteBatches = batches.filter(
       (batch) => batch.productionSiteId === site.id && TRUSTED.includes(batch.status)
     );
@@ -132,8 +142,30 @@ function buildSiteSignals(batches: BatchListItem[]): ProductionSiteSignal[] {
   });
 }
 
+/** The species and specification the most trusted batches were run against. */
+function dominantProcess(batches: BatchListItem[]): string {
+  const counts = new Map<string, number>();
+  for (const batch of batches) {
+    const key = `${batch.species} to ${batch.productSpec}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort(([, left], [, right]) => right - left)[0]?.[0] ?? "No confirmed process yet";
+}
+
+function periodLabel(batches: BatchListItem[]): string {
+  const dates = batches.map((batch) => batch.productionDate).filter(Boolean).sort();
+  if (dates.length === 0) return "No production dates recorded";
+  const distinctDays = new Set(dates).size;
+  return `${dates[0]} to ${dates[dates.length - 1]} · ${distinctDays} production days`;
+}
+
 export async function getDashboardOverview(): Promise<DashboardOverview> {
-  const [batches, investigations] = await Promise.all([listBatches(), listInvestigations()]);
+  const [batches, investigations, sites, lossCategories] = await Promise.all([
+    listBatches(),
+    listInvestigations(),
+    listProductionSites(),
+    listLossCategories()
+  ]);
 
   const trusted = batches.filter((batch) => TRUSTED.includes(batch.status));
   const totalInput = trusted.reduce((sum, batch) => sum + batch.quantities.rawInputKg, 0);
@@ -164,15 +196,26 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
   );
 
   const medianYield = median(yields);
-  const expected = priorityBatch?.analysis.baseline?.medianYieldPct ?? medianYield;
-  const yieldDelta = round(medianYield - expected);
+
+  // Each batch is measured against its own species-and-specification baseline, then
+  // those deviations are pooled. Comparing one pooled median against a single
+  // batch's baseline would read a difference between products as a drop in
+  // performance.
+  const deviations = trusted
+    .map((batch) =>
+      batch.analysis.metrics.sellableYieldPct !== undefined && batch.analysis.baseline
+        ? batch.analysis.metrics.sellableYieldPct - batch.analysis.baseline.medianYieldPct
+        : undefined
+    )
+    .filter((value): value is number => value !== undefined);
+  const yieldDelta = deviations.length > 0 ? round(median(deviations)) : 0;
 
   return {
-    facilityName: productionSites[0]?.name ?? "Production site",
-    location: productionSites[0]?.location ?? "",
-    activeProcess: "Red snapper to chilled fillet",
-    period: "Last 14 production days",
-    updatedAt: "19 Aug 2026, 09:42",
+    facilityName: sites[0]?.name ?? "Production site",
+    location: sites[0]?.location ?? "",
+    activeProcess: dominantProcess(trusted),
+    period: periodLabel(trusted),
+    updatedAt: new Date().toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }),
     metrics: [
       {
         label: "Confirmed input",
@@ -181,10 +224,10 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         helper: "Across trusted historical records"
       },
       {
-        label: "Median fillet yield",
+        label: "Median sellable yield",
         value: `${medianYield}%`,
         delta: `${yieldDelta >= 0 ? "+" : ""}${yieldDelta} pp`,
-        helper: "Against the comparable median"
+        helper: `Median deviation from each batch's own baseline (${deviations.length} compared)`
       },
       {
         label: "Unexplained mass",
@@ -201,10 +244,10 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
     ],
     yieldTrend: buildYieldTrend(trusted),
     priorityBatch,
-    lossDistribution: buildLossDistribution(priorityBatch),
+    lossDistribution: buildLossDistribution(priorityBatch, lossCategories),
     comparableCount: priorityBatch?.analysis.baseline?.sampleSize ?? 0,
     recentBatches: batches.slice(0, 6),
     investigations: openInvestigations,
-    productionSiteSignals: buildSiteSignals(batches)
+    productionSiteSignals: buildSiteSignals(batches, sites)
   };
 }

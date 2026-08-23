@@ -5,6 +5,8 @@ import { AsyncBoundary } from "@/components/app/AsyncBoundary";
 import { OperationsShell } from "@/components/app/OperationsShell";
 import { PageHeader } from "@/components/app/PageHeader";
 import { useAsyncData } from "@/hooks/useAsyncData";
+import { useWriteAction } from "@/hooks/useWriteAction";
+import { WriteErrorBanner } from "@/components/app/WriteErrorBanner";
 import { decideInvestigation, listInvestigations, type InvestigationDecision } from "./api/investigations.api";
 import { InvestigationDetail } from "./components/InvestigationDetail";
 import { InvestigationList } from "./components/InvestigationList";
@@ -15,10 +17,12 @@ export function InvestigationsView() {
 
   const selected = investigations?.find((item) => item.id === selectedId) ?? investigations?.[0];
 
-  async function handleDecide(investigationId: string, decision: InvestigationDecision) {
-    await decideInvestigation(investigationId, decision);
-    reload();
-  }
+  const decide = useWriteAction(
+    async (investigationId: string, decision: InvestigationDecision) => {
+      await decideInvestigation(investigationId, decision);
+    },
+    reload
+  );
 
   return (
     <OperationsShell>
@@ -29,6 +33,8 @@ export function InvestigationsView() {
           description="Each recommendation shows the evidence behind it and what that evidence cannot establish. Approving or dismissing is always a human decision."
           title="Investigations"
         />
+
+        <WriteErrorBanner error={decide.error} onDismiss={decide.dismissError} />
 
         <div className="mt-6">
           <AsyncBoundary
@@ -47,7 +53,7 @@ export function InvestigationsView() {
                 />
               </div>
               <div className="col-span-5">
-                {selected ? <InvestigationDetail investigation={selected} onDecide={handleDecide} /> : null}
+                {selected ? <InvestigationDetail investigation={selected} onDecide={decide.run} /> : null}
               </div>
             </div>
           </AsyncBoundary>

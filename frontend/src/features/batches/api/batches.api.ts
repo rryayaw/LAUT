@@ -1,16 +1,124 @@
 // Batch ledger access.
 //
-// Swap these bodies for `/v1/batches` calls when the endpoint exists. The
-// `analysis` block is computed here only because the backend does not yet
-// return it — see `src/placeholder/derive.ts`.
+// Backed by `/v1/production-batches`. The list endpoint returns a summary that
+// omits the loss breakdown and the context fields every view groups on, so each
+// batch is also read in detail. That fan-out is cached and disappears the moment
+// the backend widens its list projection.
 
-import type { Batch, BatchListItem, BatchSource, BatchStatus } from "@/types/domain";
-import { batches } from "@/placeholder/mock-db";
-import { batchContext } from "@/placeholder/lookups";
-import { withAnalysis } from "@/placeholder/derive";
+import type { Batch, BatchListItem, BatchSource, BatchStatus, ProductionSite } from "@/types/domain";
+import { ApiError, apiRequest, toDateOnly, toIsoTimestamp, toNumber, toRequiredNumber, toText } from "@/api/client";
+import { cached, invalidateCache } from "@/api/cache";
+import { listProcessTags, listProductionSites } from "@/features/production-sites/api/production-sites.api";
+import { withAnalysis } from "../utils/batch-metrics";
 
-function expand(batch: Batch): BatchListItem {
-  return { ...withAnalysis(batch, batches), ...batchContext(batch) };
+type SummaryRow = { id: string };
+
+type DetailRow = {
+  batch: Record<string, unknown>;
+  production_lines: Array<{ id: string; name: string; description: string | null; isActive: boolean }>;
+};
+
+function toStatus(value: unknown): BatchStatus {
+  // The backend persists `draft` and `confirmed` only; anything else it adds later
+  // already matches a lifecycle state this type declares.
+  const text = toText(value) ?? "draft";
+  const known: BatchStatus[] = ["draft", "needs_confirmation", "confirmed", "analyzed", "closed", "canceled"];
+  return known.includes(text as BatchStatus) ? (text as BatchStatus) : "draft";
+}
+
+function toSource(value: unknown): BatchSource {
+  const text = toText(value);
+  return text === "whatsapp" || text === "iot" ? text : "web";
+}
+
+/** "3 days ago" style label from a timestamp, for the ledger's reported column. */
+function relativeLabel(value: unknown): string {
+  const text = toText(value);
+  if (!text) return "Unknown";
+  const at = new Date(text);
+  if (Number.isNaN(at.getTime())) return "Unknown";
+
+  const minutes = Math.round((Date.now() - at.getTime()) / 60_000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const days = Math.round(hours / 24);
+  return days === 1 ? "Yesterday" : `${days} days ago`;
+}
+
+function toBatch(row: DetailRow): Batch {
+  const batch = row.batch;
+  const id = String(batch.id);
+
+  return {
+    id,
+    code: toText(batch.batch_reference) ?? `B-${id.slice(0, 6)}`,
+    productionSiteId: String(batch.manufacturing_site_id),
+    productionLineIds: row.production_lines.map((line) => line.id),
+    species: toText(batch.species) ?? "Unspecified species",
+    productSpec: toText(batch.product_specification) ?? "Unspecified specification",
+    status: toStatus(batch.status),
+    source: toSource(batch.source_channel),
+    productionDate: toDateOnly(batch.production_date) ?? toDateOnly(batch.created_at) ?? "",
+    createdAt: toIsoTimestamp(batch.created_at) ?? "",
+    reportedAt: relativeLabel(batch.created_at),
+    shift: toText(batch.shift) ?? "Unspecified shift",
+    supplier: toText(batch.supplier),
+    fishSizeCategory: toText(batch.fish_size_category),
+    deliveryDelayMinutes: toNumber(batch.delivery_delay_minutes),
+    receivingTempC: toNumber(batch.receiving_temperature_c),
+    rejectReason: toText(batch.receiving_condition),
+    notes: toText(batch.operator_notes),
+    quantities: {
+      rawInputKg: toRequiredNumber(batch.raw_input_kg),
+      sellableOutputKg: toNumber(batch.sellable_output_kg),
+      normalByproductKg: toNumber(batch.byproduct_kg),
+      trimmingKg: toNumber(batch.trimming_kg),
+      qualityRejectKg: toNumber(batch.quality_reject_kg),
+      spoilageKg: toNumber(batch.spoilage_kg),
+      otherLossKg: toNumber(batch.other_loss_kg)
+    },
+    // Nothing in the API marks a record as synthetic, so no record is shown as one.
+    isDemo: false
+  };
+}
+
+async function fetchBatchDetail(batchId: string): Promise<Batch> {
+  const { productionBatch } = await apiRequest<{ productionBatch: DetailRow }>(`/v1/production-batches/${batchId}`);
+  return toBatch(productionBatch);
+}
+
+async function fetchAllBatches(): Promise<Batch[]> {
+  const { productionBatches } = await apiRequest<{ productionBatches: SummaryRow[] }>("/v1/production-batches");
+  return Promise.all(productionBatches.map((row) => fetchBatchDetail(row.id)));
+}
+
+/** Resolves site, line, and tag names the way a list endpoint eventually will. */
+function buildContext(sites: ProductionSite[], tagLabelByCode: Map<string, string>) {
+  const siteNames = new Map(sites.map((site) => [site.id, site.name]));
+  const lines = new Map(sites.flatMap((site) => site.lines).map((line) => [line.id, line]));
+
+  return (batch: Batch) => ({
+    siteName: siteNames.get(batch.productionSiteId) ?? "Unknown site",
+    lineNames: batch.productionLineIds.map((lineId) => lines.get(lineId)?.name ?? "Unknown line"),
+    tagLabels: [...new Set(batch.productionLineIds.flatMap((lineId) => lines.get(lineId)?.tagCodes ?? []))].map(
+      (code) => tagLabelByCode.get(code) ?? code
+    )
+  });
+}
+
+/**
+ * Every batch with its context and derived analysis. Views filter this rather than
+ * issuing one query per filter, because the baseline for any batch depends on the
+ * whole trusted set.
+ */
+async function loadLedger(): Promise<BatchListItem[]> {
+  return cached("batches", async () => {
+    const [batches, sites, tags] = await Promise.all([fetchAllBatches(), listProductionSites(), listProcessTags()]);
+    const context = buildContext(sites, new Map(tags.map((tag) => [tag.code, tag.label])));
+    return batches.map((batch) => ({ ...withAnalysis(batch, batches), ...context(batch) }));
+  });
 }
 
 export type BatchFilter = {
@@ -21,17 +129,46 @@ export type BatchFilter = {
 };
 
 export async function listBatches(filter: BatchFilter = {}): Promise<BatchListItem[]> {
-  return batches
+  const ledger = await loadLedger();
+  return ledger
     .filter((batch) => (filter.siteId ? batch.productionSiteId === filter.siteId : true))
     .filter((batch) => (filter.lineId ? batch.productionLineIds.includes(filter.lineId) : true))
     .filter((batch) => (filter.status ? filter.status.includes(batch.status) : true))
-    .filter((batch) => (filter.source ? batch.source === filter.source : true))
-    .map(expand);
+    .filter((batch) => (filter.source ? batch.source === filter.source : true));
 }
 
 export async function getBatch(batchId: string): Promise<BatchListItem | undefined> {
-  const batch = batches.find((candidate) => candidate.id === batchId);
-  return batch ? expand(batch) : undefined;
+  const ledger = await loadLedger();
+  return ledger.find((batch) => batch.id === batchId);
+}
+
+/**
+ * A rejected confirmation comes back as a generic "not ready to confirm". The
+ * backend does say exactly what is missing or inconsistent, in the validation body,
+ * so that is what the operator is shown.
+ */
+function withConfirmationReasons(error: ApiError): ApiError {
+  const detail = error.detail;
+  if (typeof detail !== "object" || detail === null || !("validation" in detail)) return error;
+
+  const validation = (detail as { validation?: { errors?: string[]; warnings?: string[] } }).validation;
+  const reasons = [...(validation?.errors ?? []), ...(validation?.warnings ?? [])];
+  if (reasons.length === 0) return error;
+
+  return new ApiError(`${error.message} ${reasons.join(" ")}`, error.status, detail);
+}
+
+/** Re-reads the ledger so a freshly written batch carries context and a baseline. */
+async function decorate(batch: Batch): Promise<BatchListItem> {
+  const ledger = await loadLedger();
+  return (
+    ledger.find((candidate) => candidate.id === batch.id) ?? {
+      ...withAnalysis(batch, []),
+      siteName: "Unknown site",
+      lineNames: [],
+      tagLabels: []
+    }
+  );
 }
 
 export type CreateBatchInput = {
@@ -51,68 +188,98 @@ export type CreateBatchInput = {
   trimmingKg?: number;
   qualityRejectKg?: number;
   spoilageKg?: number;
+  /**
+   * The backend will not let a batch be confirmed while any mass field is unreported,
+   * so this is collected as 0 rather than left blank when there is no other loss.
+   */
+  otherLossKg?: number;
 };
 
-function nextCode(): string {
-  const highest = batches.reduce((max, batch) => {
-    const value = Number(batch.code.replace("B-", ""));
-    return Number.isFinite(value) && value > max ? value : max;
-  }, 0);
-  return `B-${highest + 1}`;
-}
-
 /**
- * Creates a record that is explicitly NOT trusted history yet. It enters as a
- * draft and only a human confirmation moves it forward (mastersheet guardrail 1).
+ * Creates a record that is explicitly NOT trusted history yet. The backend enters
+ * it as a draft and only a human confirmation moves it forward (mastersheet
+ * guardrail 1).
  */
 export async function createBatch(input: CreateBatchInput): Promise<BatchListItem> {
-  const now = new Date();
-  const batch: Batch = {
-    id: `batch-${now.getTime()}`,
-    code: nextCode(),
-    productionSiteId: input.productionSiteId,
-    productionLineIds: input.productionLineIds,
-    species: input.species,
-    productSpec: input.productSpec,
-    status: "draft",
-    source: "web",
-    productionDate: now.toISOString().slice(0, 10),
-    reportedAt: "Just now",
-    shift: input.shift,
-    supplier: input.supplier,
-    fishSizeCategory: input.fishSizeCategory,
-    deliveryDelayMinutes: input.deliveryDelayMinutes,
-    rejectReason: input.rejectReason,
-    notes: input.notes,
-    quantities: {
+  const { productionBatch } = await apiRequest<{ productionBatch: DetailRow }>("/v1/production-batches", {
+    method: "POST",
+    body: {
+      manufacturingSiteId: input.productionSiteId,
+      productionLineIds: input.productionLineIds,
+      sourceChannel: "web",
+      species: input.species,
+      productSpecification: input.productSpec,
+      shift: input.shift,
+      supplier: input.supplier,
+      fishSizeCategory: input.fishSizeCategory,
+      deliveryDelayMinutes: input.deliveryDelayMinutes,
+      receivingCondition: input.rejectReason,
+      operatorNotes: input.notes,
       rawInputKg: input.rawInputKg,
       sellableOutputKg: input.sellableOutputKg,
-      normalByproductKg: input.normalByproductKg,
+      byproductKg: input.normalByproductKg,
       trimmingKg: input.trimmingKg,
       qualityRejectKg: input.qualityRejectKg,
-      spoilageKg: input.spoilageKg
-    },
-    isDemo: false
-  };
+      spoilageKg: input.spoilageKg,
+      otherLossKg: input.otherLossKg
+    }
+  });
 
-  batches.unshift(batch);
-  return expand(batch);
+  invalidateCache("batches");
+  return decorate(toBatch(productionBatch));
 }
 
-/** Only confirmed records become trusted historical data. */
-export async function confirmBatch(batchId: string): Promise<BatchListItem> {
-  const batch = batches.find((candidate) => candidate.id === batchId);
-  if (!batch) throw new Error(`Batch ${batchId} was not found.`);
-  batch.status = "confirmed";
-  return expand(batch);
-}
+const QUANTITY_COLUMNS: Array<[keyof Batch["quantities"], string]> = [
+  ["rawInputKg", "rawInputKg"],
+  ["sellableOutputKg", "sellableOutputKg"],
+  ["normalByproductKg", "byproductKg"],
+  ["trimmingKg", "trimmingKg"],
+  ["qualityRejectKg", "qualityRejectKg"],
+  ["spoilageKg", "spoilageKg"],
+  ["otherLossKg", "otherLossKg"]
+];
 
+/**
+ * Drafts only — the backend rejects a change to a confirmed record.
+ *
+ * A key the caller did not mention is left alone. A key it mentioned as
+ * `undefined` is sent as an explicit `null`, because clearing a weight back to
+ * "not measured" is a real correction and `JSON.stringify` would otherwise drop it
+ * and silently do nothing.
+ */
 export async function updateBatchQuantities(
   batchId: string,
   quantities: Partial<Batch["quantities"]>
 ): Promise<BatchListItem> {
-  const batch = batches.find((candidate) => candidate.id === batchId);
-  if (!batch) throw new Error(`Batch ${batchId} was not found.`);
-  batch.quantities = { ...batch.quantities, ...quantities };
-  return expand(batch);
+  const body: Record<string, number | null> = {};
+  for (const [field, column] of QUANTITY_COLUMNS) {
+    if (Object.hasOwn(quantities, field)) body[column] = quantities[field] ?? null;
+  }
+
+  const { productionBatch } = await apiRequest<{ productionBatch: DetailRow }>(`/v1/production-batches/${batchId}`, {
+    method: "PATCH",
+    body
+  });
+
+  invalidateCache("batches");
+  return decorate(toBatch(productionBatch));
+}
+
+/**
+ * Only confirmed records become trusted historical data. Confirmation is also what
+ * makes a batch eligible for analysis, so the analysis run is started here — and
+ * allowed to fail, because the batch is confirmed whether or not guidance generates.
+ */
+export async function confirmBatch(batchId: string): Promise<BatchListItem> {
+  const { productionBatch } = await apiRequest<{ productionBatch: DetailRow }>(
+    `/v1/production-batches/${batchId}/confirm`,
+    { method: "POST" }
+  ).catch((cause: unknown) => {
+    throw cause instanceof ApiError ? withConfirmationReasons(cause) : cause;
+  });
+
+  await apiRequest(`/v1/production-batches/${batchId}/analysis`, { method: "POST" }).catch(() => undefined);
+
+  invalidateCache();
+  return decorate(toBatch(productionBatch));
 }

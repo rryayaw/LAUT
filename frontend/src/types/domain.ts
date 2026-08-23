@@ -1,34 +1,24 @@
 // Core LAUT domain entities.
 //
-// These mirror the shape the backend will eventually return, so feature code can
-// keep importing from here unchanged once `src/placeholder/` is deleted.
+// Feature `api/` modules translate backend responses into these types, so views
+// never see snake_case columns, string-encoded numerics, or endpoint shapes.
 
 // ---------------------------------------------------------------------------
 // Process tags
 // ---------------------------------------------------------------------------
 
-/** Matches the `process_tags` system catalogue in the Supabase migrations. */
-export type ProcessTagCode =
-  | "receiving"
-  | "sorting"
-  | "washing"
-  | "cutting"
-  | "filleting"
-  | "deboning"
-  | "skinning"
-  | "trimming"
-  | "grading"
-  | "quality_control"
-  | "weighing"
-  | "packaging"
-  | "freezing"
-  | "glazing"
-  | "cold_storage"
-  | "rework"
-  | "waste_handling"
-  | "other";
+/**
+ * A capability-tag code from the backend's `capability_tags` catalogue
+ * (`cutting`, `filleting`, `freezing`, …). The catalogue is data rather than a
+ * compile-time union, so codes stay open: the backend can seed a new one without
+ * a frontend release. Always resolve a code to a label through the catalogue
+ * returned by `listProcessTags()`.
+ */
+export type ProcessTagCode = string;
 
 export type ProcessTag = {
+  /** Catalogue row ID. Required when assigning a tag to a production line. */
+  id: string;
   code: ProcessTagCode;
   label: string;
   description: string;
@@ -40,6 +30,10 @@ export type ProcessTag = {
 
 export type MachineStatus = "operational" | "maintenance" | "offline";
 
+/**
+ * Machine-level records are on the mastersheet roadmap but have no table or
+ * endpoint yet, so lines currently come back with an empty machine list.
+ */
 export type Machine = {
   id: string;
   productionLineId: string;
@@ -79,6 +73,11 @@ export type ProductionSite = {
 // Batches
 // ---------------------------------------------------------------------------
 
+/**
+ * The full mastersheet lifecycle. The backend currently persists only `draft` and
+ * `confirmed`; the remaining states are accepted here so views need no change as
+ * the backend fills them in.
+ */
 export type BatchStatus =
   | "draft"
   | "needs_confirmation"
@@ -112,6 +111,9 @@ export type Batch = {
   status: BatchStatus;
   source: BatchSource;
   productionDate: string;
+  /** ISO timestamp of when the record was created. Used for ordering the audit trail. */
+  createdAt: string;
+  /** Relative label derived from `createdAt`, e.g. "3 days ago". */
   reportedAt: string;
   shift: string;
   supplier?: string;
@@ -225,14 +227,22 @@ export type Investigation = {
 // Processing configuration
 // ---------------------------------------------------------------------------
 
+/**
+ * A species and specification the site actually processes, which is what LAUT
+ * compares batches within. There is no configuration table behind this yet, so it
+ * is observed from confirmed batches rather than declared: the yield figure is the
+ * median that was measured, not a target anyone set.
+ */
 export type ProductConfig = {
   id: string;
   productionSiteId: string;
   species: string;
   productSpec: string;
   chilledOrFrozen: "chilled" | "frozen";
-  expectedYieldPct: number;
-  /** Operator-set measurement tolerance. Never inferred by the AI. */
+  /** Median sellable yield measured across `sampleSize` confirmed batches. */
+  observedMedianYieldPct: number;
+  sampleSize: number;
+  /** Measurement tolerance applied to the mass balance. Never inferred by the AI. */
   massBalanceTolerancePct: number;
 };
 

@@ -112,7 +112,13 @@ function buildYieldTrend(batches: BatchListItem[]): TrendPoint[] {
     .map(([date, group]) => ({
       label: date.slice(5),
       yieldPct: median(metricValues(group, (batch) => batch.analysis.metrics.sellableYieldPct)),
-      baselinePct: median(group.map((batch) => batch.analysis.baseline?.medianYieldPct ?? 0)),
+      // A batch without enough comparable history has no baseline. Treating that as
+      // zero would invent a gap, so those batches sit out of the baseline line.
+      baselinePct: median(
+        group
+          .map((batch) => batch.analysis.baseline?.medianYieldPct)
+          .filter((value): value is number => value !== undefined)
+      ),
       batchCount: group.length
     }));
 }
@@ -132,11 +138,16 @@ export async function getAnalysisOverview(siteId?: string): Promise<AnalysisOver
     fishSize: compareGroups(trusted, (batch) => batch.fishSizeCategory)
   };
 
+  const dates = trusted.map((batch) => batch.productionDate).filter(Boolean).sort();
+
   return {
-    period: "Last 14 production days",
+    period:
+      dates.length === 0
+        ? "No confirmed production dates"
+        : `${dates[0]} to ${dates[dates.length - 1]} · ${new Set(dates).size} production days`,
     trustedBatchCount: trusted.length,
-    species: trusted[0]?.species ?? "Red snapper",
-    productSpec: trusted[0]?.productSpec ?? "Skinless chilled fillet",
+    species: trusted[0]?.species ?? "No confirmed species",
+    productSpec: trusted[0]?.productSpec ?? "No confirmed specification",
     yieldTrend: buildYieldTrend(trusted),
     distribution: buildDistribution(trusted, focusBatch),
     lossTrend: buildLossTrend(trusted),

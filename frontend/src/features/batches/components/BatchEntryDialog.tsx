@@ -49,14 +49,15 @@ export function BatchEntryDialog({ onCreateBatch, productConfigs, sites }: Reado
   const [sizeCategory, setSizeCategory] = useState(SIZE_CATEGORIES[1]);
 
   const [inputKg, setInputKg] = useState(0);
-  const [outputs, setOutputs] = useState({ sellable: 0, byproduct: 0, trimming: 0, reject: 0, spoilage: 0 });
+  const [outputs, setOutputs] = useState({ sellable: 0, byproduct: 0, trimming: 0, reject: 0, spoilage: 0, other: 0 });
 
   const site = sites.find((candidate) => candidate.id === siteId) ?? sites[0];
   const siteConfigs = productConfigs.filter((config) => config.productionSiteId === site?.id);
   const selectedConfig = siteConfigs.find((config) => config.id === configId) ?? siteConfigs[0];
 
   const balance = useMemo(() => {
-    const accounted = outputs.sellable + outputs.byproduct + outputs.trimming + outputs.reject + outputs.spoilage;
+    const accounted =
+      outputs.sellable + outputs.byproduct + outputs.trimming + outputs.reject + outputs.spoilage + outputs.other;
     const unexplained = Math.round((inputKg - accounted) * 10) / 10;
     const yieldPct = inputKg > 0 && outputs.sellable > 0 ? Math.round((outputs.sellable / inputKg) * 1000) / 10 : undefined;
     return { accounted: Math.round(accounted * 10) / 10, unexplained, yieldPct };
@@ -93,13 +94,14 @@ export function BatchEntryDialog({ onCreateBatch, productConfigs, sites }: Reado
       normalByproductKg: numberOrUndefined(data.get("byproduct")),
       trimmingKg: numberOrUndefined(data.get("trimming")),
       qualityRejectKg: numberOrUndefined(data.get("quality-reject")),
-      spoilageKg: numberOrUndefined(data.get("spoilage"))
+      spoilageKg: numberOrUndefined(data.get("spoilage")),
+      otherLossKg: numberOrUndefined(data.get("other-loss"))
     });
 
     event.currentTarget.reset();
     setLineIds([]);
     setInputKg(0);
-    setOutputs({ sellable: 0, byproduct: 0, trimming: 0, reject: 0, spoilage: 0 });
+    setOutputs({ sellable: 0, byproduct: 0, trimming: 0, reject: 0, spoilage: 0, other: 0 });
     setOpen(false);
   }
 
@@ -237,8 +239,11 @@ export function BatchEntryDialog({ onCreateBatch, productConfigs, sites }: Reado
               <Field id="quality-reject" label="Quality reject">
                 <Input className={inputClass} id="quality-reject" min="0" name="quality-reject" onChange={(event) => setOutputs((c) => ({ ...c, reject: Number(event.target.value) }))} placeholder="kg" step="0.1" type="number" />
               </Field>
-              <Field hint="Optional" id="spoilage" label="Spoilage / damage">
+              <Field hint="0 if none" id="spoilage" label="Spoilage / damage">
                 <Input className={inputClass} id="spoilage" min="0" name="spoilage" onChange={(event) => setOutputs((c) => ({ ...c, spoilage: Number(event.target.value) }))} placeholder="kg" step="0.1" type="number" />
+              </Field>
+              <Field hint="0 if none" id="other-loss" label="Other loss">
+                <Input className={inputClass} id="other-loss" min="0" name="other-loss" onChange={(event) => setOutputs((c) => ({ ...c, other: Number(event.target.value) }))} placeholder="kg" step="0.1" type="number" />
               </Field>
               <Field hint="Optional" id="reject-reason" label="Reject reason">
                 <Input className={inputClass} id="reject-reason" name="reject-reason" placeholder="e.g. Soft flesh" />

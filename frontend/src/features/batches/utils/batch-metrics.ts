@@ -1,11 +1,11 @@
 // Deterministic batch calculations.
 //
-// TEMPORARY. The backend owns this logic (mastersheet §7 and §8B) — it lives here
-// only so the frontend has something to render before the API exists. When
-// `/v1/batches` returns a computed `analysis` object, delete this file; no
-// component reads it directly.
+// These mirror `validateBatch()` in `backend/src/features/batch-reporting`, applied
+// to the raw weights the API returns so list views do not need one extra request
+// per batch. No LLM is involved in anything below, and none ever should be.
 //
-// No LLM is involved in anything below, and none ever should be.
+// When the backend adds a computed `analysis` block to its batch projections, this
+// file is deleted and the values are read straight off the response.
 
 import type {
   AnalyzedBatch,
@@ -18,12 +18,17 @@ import type {
   MassBalanceStatus
 } from "@/types/domain";
 
-/** Operator-configured tolerance; never inferred. Mirrors ProductConfig. */
-const DEFAULT_TOLERANCE_PCT = 1.5;
+/**
+ * Measurement tolerance below which a mass-balance gap is treated as rounding
+ * rather than a discrepancy. Operator-configurable in the mastersheet; the backend
+ * does not store it yet, so this default is applied and shown on the configuration
+ * page. It is never inferred by the AI.
+ */
+export const DEFAULT_TOLERANCE_PCT = 1.5;
 
 function ratio(part: number | undefined, whole: number): number | undefined {
   if (part === undefined || whole <= 0) return undefined;
-  return round(part / whole * 100);
+  return round((part / whole) * 100);
 }
 
 function round(value: number): number {
@@ -34,6 +39,8 @@ export function calculateMetrics(batch: Batch, tolerancePct = DEFAULT_TOLERANCE_
   const q = batch.quantities;
   const input = q.rawInputKg;
 
+  // The backend treats a batch as incomplete while any output or loss field is
+  // unreported, so the same six fields decide it here.
   const parts = [
     q.sellableOutputKg,
     q.normalByproductKg,
@@ -45,12 +52,10 @@ export function calculateMetrics(batch: Batch, tolerancePct = DEFAULT_TOLERANCE_
 
   const accountedKg = round(parts.reduce<number>((total, part) => total + (part ?? 0), 0));
   const unexplainedKg = round(input - accountedKg);
-
-  const hasEveryOutput = q.sellableOutputKg !== undefined && q.normalByproductKg !== undefined;
   const toleranceKg = input * (tolerancePct / 100);
 
   let massBalance: MassBalanceStatus;
-  if (!hasEveryOutput) {
+  if (parts.some((part) => part === undefined) || input <= 0) {
     massBalance = "incomplete";
   } else if (Math.abs(unexplainedKg) <= toleranceKg) {
     massBalance = "balanced";
@@ -77,9 +82,10 @@ function median(values: number[]): number {
 }
 
 /**
- * Compare like with like (mastersheet §2.4): same species, same product spec, and
- * only batches whose data is trusted. Unrelated products are never pooled to
- * inflate the sample.
+ * Mirrors the comparable-batch query the backend runs for `/comparables`: same
+ * species, same product specification, confirmed only, and sharing at least one
+ * production line or process tag. Unrelated products are never pooled to inflate
+ * the sample.
  */
 export function findComparables(batch: Batch, all: Batch[]): Batch[] {
   const trusted: Batch["status"][] = ["confirmed", "analyzed", "closed"];
@@ -119,9 +125,10 @@ export function buildBaseline(batch: Batch, all: Batch[]): ComparableBaseline | 
 }
 
 /**
- * Placeholder stand-in for the Isolation Forest / robust Z-score pair described in
- * mastersheet §8E. Deliberately simple and explainable — it exists to give the UI
- * realistic severities, not to be the shipped model.
+ * Stand-in for the Isolation Forest / robust Z-score pair described in mastersheet
+ * §8E. Deliberately simple and explainable — it gives the UI a severity to render
+ * while the backend's own assessment (`/analysis`) remains the authority shown on
+ * the investigations page.
  */
 export function detectAnomaly(
   metrics: BatchMetrics,
@@ -130,8 +137,8 @@ export function detectAnomaly(
   if (!baseline || metrics.sellableYieldPct === undefined) return undefined;
 
   // Mastersheet §7: a batch does not receive operational analysis while major
-  // quantities remain unexplained. An incomplete report is a reporting gap, not
-  // a production signal, and must not be presented as one.
+  // quantities remain unexplained. An incomplete report is a reporting gap, not a
+  // production signal, and must not be presented as one.
   if (metrics.massBalance !== "balanced") return undefined;
 
   const drivers: string[] = [];
@@ -156,8 +163,7 @@ export function detectAnomaly(
 export function analyzeBatch(batch: Batch, all: Batch[]): BatchAnalysis {
   const metrics = calculateMetrics(batch);
   const baseline = buildBaseline(batch, all);
-  const anomaly = detectAnomaly(metrics, baseline);
-  return { metrics, baseline, anomaly };
+  return { metrics, baseline, anomaly: detectAnomaly(metrics, baseline) };
 }
 
 export function withAnalysis(batch: Batch, all: Batch[]): AnalyzedBatch {

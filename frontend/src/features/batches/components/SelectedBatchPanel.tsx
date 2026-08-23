@@ -3,12 +3,14 @@
 import { Building2, Check, GitBranch, MessageCircle, Tags, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { BatchListItem } from "@/types/domain";
+import type { BatchListItem, BatchQuantities } from "@/types/domain";
 import { AnomalyTag, BatchStatusTag } from "./BatchStatusTag";
+import { EditQuantitiesDialog } from "./EditQuantitiesDialog";
 
 type SelectedBatchPanelProps = {
   batch: BatchListItem;
   onConfirm: (batchId: string) => void;
+  onUpdateQuantities: (batchId: string, quantities: Partial<BatchQuantities>) => void;
 };
 
 type BalanceRow = { label: string; kg: number; pct: number; tone: string };
@@ -42,7 +44,7 @@ function buildBalanceRows(batch: BatchListItem): BalanceRow[] {
   return rows;
 }
 
-export function SelectedBatchPanel({ batch, onConfirm }: Readonly<SelectedBatchPanelProps>) {
+export function SelectedBatchPanel({ batch, onConfirm, onUpdateQuantities }: Readonly<SelectedBatchPanelProps>) {
   const { analysis } = batch;
   const { metrics, baseline, anomaly } = analysis;
   const rows = buildBalanceRows(batch);
@@ -177,7 +179,8 @@ export function SelectedBatchPanel({ batch, onConfirm }: Readonly<SelectedBatchP
         ) : null}
 
         {!isTrusted ? (
-          <div className="mt-4 border-t border-[var(--line)] pt-4">
+          <div className="mt-4 space-y-2 border-t border-[var(--line)] pt-4">
+            <EditQuantitiesDialog batch={batch} onSave={onUpdateQuantities} />
             <Button
               className="h-auto w-full rounded-none bg-[var(--brand)] px-3 py-2 text-white shadow-none hover:bg-[var(--brand-strong)]"
               onClick={() => onConfirm(batch.id)}

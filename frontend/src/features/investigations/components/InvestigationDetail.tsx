@@ -50,11 +50,11 @@ export function InvestigationDetail({ investigation, onDecide }: Readonly<Invest
             <span className="font-mono text-[11px] text-[var(--muted)]">{investigation.evidence.length} items</span>
           </div>
           <div className="mt-3 divide-y divide-[var(--line)] border-y border-[var(--line)]">
-            {investigation.evidence.map((item) => {
+            {investigation.evidence.map((item, index) => {
               const meta = evidenceMeta[item.kind];
               const Icon = meta.icon;
               return (
-                <article className="flex gap-3 py-3" key={`${item.kind}-${item.label}`}>
+                <article className="flex gap-3 py-3" key={index}>
                   <Icon aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--brand)]" size={15} strokeWidth={1.75} />
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -72,8 +72,8 @@ export function InvestigationDetail({ investigation, onDecide }: Readonly<Invest
         <section aria-labelledby="factors-title" className="border-b border-[var(--line)] px-5 py-4">
           <h3 className="text-xs font-medium text-[var(--muted)]" id="factors-title">Possible contributing factors</h3>
           <ul className="mt-2 space-y-1.5">
-            {investigation.possibleFactors.map((factor) => (
-              <li className="flex gap-2 text-sm leading-6 text-[var(--ink)]" key={factor}>
+            {investigation.possibleFactors.map((factor, index) => (
+              <li className="flex gap-2 text-sm leading-6 text-[var(--ink)]" key={index}>
                 <span aria-hidden="true" className="mt-2.5 h-1 w-1 shrink-0 bg-[var(--brand)]" />
                 {factor}
               </li>
@@ -95,8 +95,8 @@ export function InvestigationDetail({ investigation, onDecide }: Readonly<Invest
             <h3 id="limitations-title">What this evidence cannot show</h3>
           </div>
           <ul className="mt-2 space-y-1.5">
-            {investigation.limitations.map((limitation) => (
-              <li className="text-xs leading-5 text-[var(--muted)]" key={limitation}>{limitation}</li>
+            {investigation.limitations.map((limitation, index) => (
+              <li className="text-xs leading-5 text-[var(--muted)]" key={index}>{limitation}</li>
             ))}
           </ul>
         </section>

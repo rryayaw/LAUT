@@ -8,6 +8,8 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAsyncData } from "@/hooks/useAsyncData";
+import { useWriteAction } from "@/hooks/useWriteAction";
+import { WriteErrorBanner } from "@/components/app/WriteErrorBanner";
 import type { ProductionSite } from "@/types/domain";
 import {
   createMachine,
@@ -34,24 +36,29 @@ export function ProductionSitesView() {
   const selectedLine =
     selectedSite?.lines.find((line) => line.id === selectedLineId) ?? selectedSite?.lines[0];
 
-  async function handleAddSite(values: CreateProductionSiteInput) {
+  const addSite = useWriteAction(async (values: CreateProductionSiteInput) => {
     const site = await createProductionSite(values);
     setSelectedSiteId(site.id);
     setSelectedLineId(undefined);
-    reload();
-  }
+  }, reload);
 
-  async function handleAddLine(values: CreateProductionLineInput) {
+  const addLine = useWriteAction(async (values: CreateProductionLineInput) => {
     if (!selectedSite) return;
     const line = await createProductionLine(selectedSite.id, values);
     setSelectedLineId(line.id);
-    reload();
-  }
+  }, reload);
 
-  async function handleAddMachine(values: CreateMachineInput) {
+  const addMachine = useWriteAction(async (values: CreateMachineInput) => {
     if (!selectedLine) return;
     await createMachine(selectedLine.id, values);
-    reload();
+  }, reload);
+
+  const writeError = addSite.error ?? addLine.error ?? addMachine.error;
+
+  function dismissWriteError() {
+    addSite.dismissError();
+    addLine.dismissError();
+    addMachine.dismissError();
   }
 
   return (
@@ -59,7 +66,7 @@ export function ProductionSitesView() {
       <a className="skip-link" href="#production-sites-content">Skip to production sites</a>
       <main className="mx-auto max-w-[92rem] px-7 py-6" id="production-sites-content" tabIndex={-1}>
         <PageHeader
-          actions={<AddProductionSiteDialog onAddSite={handleAddSite} />}
+          actions={<AddProductionSiteDialog onAddSite={addSite.run} />}
           breadcrumb="Operations / production sites"
           description="One site is a physical plant. Each site runs production lines, and each line has its own process tags, machines, and saved operating context."
           meta={
@@ -95,6 +102,8 @@ export function ProductionSitesView() {
           title="Production sites"
         />
 
+        <WriteErrorBanner error={writeError} onDismiss={dismissWriteError} />
+
         <div className="mt-6">
           <AsyncBoundary
             emptyMessage="Add a production site to begin configuring lines, tags, and machines."
@@ -108,7 +117,7 @@ export function ProductionSitesView() {
                 <div className="col-span-8">
                   <div className="mb-4 flex items-end justify-between gap-5">
                     <SiteSummary site={selectedSite} />
-                    <AddProductionLineDialog onAddLine={handleAddLine} processTags={processTags ?? []} />
+                    <AddProductionLineDialog onAddLine={addLine.run} processTags={processTags ?? []} />
                   </div>
                   <ProductionLinesLedger
                     lines={selectedSite.lines}
@@ -119,7 +128,7 @@ export function ProductionSitesView() {
                 </div>
                 <div className="col-span-4">
                   {selectedLine ? (
-                    <ProductionLinePanel line={selectedLine} onAddMachine={handleAddMachine} processTags={processTags ?? []} />
+                    <ProductionLinePanel line={selectedLine} onAddMachine={addMachine.run} processTags={processTags ?? []} />
                   ) : (
                     <aside className="flex min-h-[20rem] flex-col items-center justify-center gap-3 border-y border-[var(--line)] bg-[var(--surface)] px-6 text-center">
                       <GitBranch aria-hidden="true" className="text-[var(--brand)]" size={22} strokeWidth={1.5} />
