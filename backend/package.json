@@ -8,6 +8,8 @@
     "build": "npm run prisma:generate && tsc",
     "start": "node dist/server.js",
     "typecheck": "npm run prisma:generate && tsc --noEmit",
+    "test": "tsx --test test/index.test.ts",
+    "test:hosted": "set RUN_HOSTED_INTEGRATION_TESTS=true&& tsx --test test/hosted-analysis.integration.test.ts",
     "prisma:generate": "prisma generate"
   },
   "dependencies": {

@@ -9,7 +9,7 @@ type WizardStep =
   | "awaiting_raw_input" | "awaiting_sellable_output" | "awaiting_trimming" | "awaiting_quality_reject"
   | "awaiting_byproduct" | "awaiting_spoilage" | "awaiting_other_loss" | "awaiting_review";
 
-type WizardDraft = {
+export type WizardDraft = {
   manufacturingSiteId?: string;
   productionLineIds?: string[];
   species?: string;
@@ -60,6 +60,10 @@ const STEPS: Array<[WizardStep, keyof WizardDraft, string]> = [
   ["awaiting_spoilage", "spoilageKg", "Berapa *spoilage*?\nKirim angka dalam kg, atau 0 bila tidak ada."],
   ["awaiting_other_loss", "otherLossKg", "Berapa *kehilangan lain*?\nKirim angka dalam kg, atau 0 bila tidak ada."]
 ];
+
+export function nextMissingBatchField(draft: WizardDraft) {
+  return STEPS.find(([, field]) => draft[field] === undefined);
+}
 
 function database() {
   if (!prisma) throw new Error("Database access is not configured.");
@@ -158,7 +162,7 @@ async function promptForMissing(conversation: WhatsAppConversation, draft: Wizar
     await saveConversation(conversation);
     return linePrompt(conversation.profileId, draft.manufacturingSiteId);
   }
-  const missing = STEPS.find(([, field]) => draft[field] === undefined);
+  const missing = nextMissingBatchField(draft);
   if (missing) {
     conversation.currentStep = missing[0];
     await saveConversation(conversation);

@@ -78,7 +78,7 @@ function round(value: number): number {
   return Math.round(value * 1000) / 1000;
 }
 
-function assess(evidence: AnalysisEvidence): DeterministicAssessment {
+export function assessProductionEvidence(evidence: AnalysisEvidence): DeterministicAssessment {
   if (evidence.comparableCount < 3) {
     return {
       status: "insufficient_history",
@@ -117,7 +117,7 @@ async function generateGuidance(evidence: AnalysisEvidence, assessment: Determin
 }
 
 const graph = new StateGraph(AnalysisState)
-  .addNode("calculate_assessment", async (state) => ({ assessment: assess(state.evidence) }))
+  .addNode("calculate_assessment", async (state) => ({ assessment: assessProductionEvidence(state.evidence) }))
   .addNode("generate_guidance", async (state) => ({ guidance: await generateGuidance(state.evidence, state.assessment) }))
   .addEdge(START, "calculate_assessment")
   .addConditionalEdges("calculate_assessment", (state) => env.GOOGLE_API_KEY && state.assessment.status !== "insufficient_history" ? "generate_guidance" : END)
