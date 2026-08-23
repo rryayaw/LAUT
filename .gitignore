@@ -17,6 +17,7 @@ backend/__pycache__/
 backend/**/*.py[cod]
 .pytest_cache/
 .mypy_cache/
+backend/private.key
 
 # Tooling and operating-system files
 .DS_Store
