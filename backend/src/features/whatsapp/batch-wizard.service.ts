@@ -1,4 +1,5 @@
 import { prisma } from "../../db/prisma.js";
+import { analyzeAndSaveBatch, formatWhatsAppAnalysisSummary } from "../batch-analysis/batch-analysis.service.js";
 import { validateBatch, type BatchDatabaseRow } from "../batch-reporting/batch-reporting.routes.js";
 import { extractBatchCandidates, type BatchExtraction } from "./batch-extraction.service.js";
 import { closeConversation, saveConversation, type WhatsAppConversation } from "./whatsapp-conversation.service.js";
@@ -313,9 +314,16 @@ export async function advanceBatchWizard(conversation: WhatsAppConversation, inb
   if (step === "awaiting_review") {
     if (lower === "confirm") {
       const result = await confirmBatch(conversation.profileId, draft);
-      if ("batchId" in result) {
+      if (typeof result.batchId === "string") {
         await closeConversation(conversation.id);
-        return { text: `*Batch berhasil dikonfirmasi* ✅\n\nID batch: ${result.batchId}\nData sudah dikunci dan tercatat di riwayat LAUT.`, close: true };
+        const confirmation = `*Batch berhasil dikonfirmasi* ✅\n\nID batch: ${result.batchId}\nData sudah dikunci dan tercatat di riwayat LAUT.`;
+        try {
+          const analysis = await analyzeAndSaveBatch(conversation.profileId, result.batchId);
+          return { text: `${confirmation}\n\n${formatWhatsAppAnalysisSummary(analysis)}`, close: true };
+        } catch (error) {
+          console.error("WhatsApp batch analysis failed after confirmation.", error);
+          return { text: `${confirmation}\n\n_Analisis awal belum tersedia. Anda dapat melihat batch ini di LAUT._`, close: true };
+        }
       }
       return review(draft);
     }

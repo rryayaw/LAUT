@@ -126,10 +126,26 @@ model ProductionBatch {
   manufacturingSite         ManufacturingSite     @relation(fields: [manufacturingSiteId], references: [id], onDelete: Restrict)
   lineLinks                 ProductionBatchLine[]
   auditEvents               ProductionBatchAuditEvent[]
+  analysis                  ProductionBatchAnalysis?
 
   @@unique([id, manufacturingSiteId])
   @@index([manufacturingSiteId, status, productionDate])
   @@map("production_batch")
+  @@schema("public")
+}
+
+model ProductionBatchAnalysis {
+  id                String          @id @default(uuid()) @db.Uuid
+  productionBatchId String          @unique @map("production_batch_id") @db.Uuid
+  assessment        Json            @db.JsonB
+  guidance          Json?           @db.JsonB
+  evidence          Json            @db.JsonB
+  aiStatus          String          @map("ai_status") @db.Text
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  productionBatch   ProductionBatch @relation(fields: [productionBatchId], references: [id], onDelete: Restrict)
+
+  @@index([productionBatchId, createdAt(sort: Desc)])
+  @@map("production_batch_analyses")
   @@schema("public")
 }
 

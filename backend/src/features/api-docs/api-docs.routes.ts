@@ -40,7 +40,10 @@ const openapi = {
     "/v1/production-batches/{batchId}/confirm": { post: { ...secured("Confirm a complete valid draft"), parameters: [pathId("batchId")] } },
     "/v1/production-batches/{batchId}/audit-events": { get: { ...secured("List batch audit events"), parameters: [pathId("batchId")] } },
     "/v1/production-batches/{batchId}/comparables": { get: { ...secured("List comparable confirmed batches"), parameters: [pathId("batchId")] } },
-    "/v1/production-batches/{batchId}/analysis": { post: { ...secured("Run deterministic analysis and optional Gemini guidance"), description: "The batch must be confirmed and complete. At least three comparables are required for a baseline label.", parameters: [pathId("batchId")] } }
+    "/v1/production-batches/{batchId}/analysis": {
+      get: { ...secured("Get saved batch analysis"), parameters: [pathId("batchId")] },
+      post: { ...secured("Run and save deterministic analysis with optional Gemini guidance"), description: "The batch must be confirmed and complete. At least three comparables are required for a baseline label. Repeated calls return the saved analysis.", parameters: [pathId("batchId")] }
+    }
   }
 } as const;
 
