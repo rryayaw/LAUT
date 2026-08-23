@@ -33,7 +33,7 @@ whatsappRouter.post("/v1/whatsapp/inbound", async (request, response) => {
     if (inbound.duplicate) return response.sendStatus(204);
     const text = inbound.linked && inbound.conversation
       ? (await advanceBatchWizard(inbound.conversation, message.text ?? "")).text
-      : "This WhatsApp number is not linked to a LAUT account yet. Sign in to LAUT and link this number first.";
+      : "Nomor WhatsApp ini belum terhubung ke akun *LAUT*.\n\nMasuk ke LAUT melalui web, lalu hubungkan nomor ini terlebih dahulu.";
     const sent = await adapter.sendText({ to: message.from, text });
     await recordOutboundMessage(inbound.identityId, inbound.conversation?.id, sent, text);
     return response.sendStatus(204);

@@ -1,9 +1,10 @@
 import { prisma } from "../../db/prisma.js";
 import { validateBatch, type BatchDatabaseRow } from "../batch-reporting/batch-reporting.routes.js";
+import { extractBatchCandidates, type BatchExtraction } from "./batch-extraction.service.js";
 import { closeConversation, saveConversation, type WhatsAppConversation } from "./whatsapp-conversation.service.js";
 
 type WizardStep =
-  | "awaiting_intent" | "awaiting_site" | "awaiting_lines" | "awaiting_species" | "awaiting_product_specification"
+  | "awaiting_intent" | "awaiting_site" | "awaiting_lines" | "awaiting_batch_details" | "awaiting_species" | "awaiting_product_specification"
   | "awaiting_raw_input" | "awaiting_sellable_output" | "awaiting_trimming" | "awaiting_quality_reject"
   | "awaiting_byproduct" | "awaiting_spoilage" | "awaiting_other_loss" | "awaiting_review";
 
@@ -23,19 +24,40 @@ type WizardDraft = {
 
 type WizardReply = { text: string; close?: boolean };
 type Row = Record<string, unknown>;
+const CANCEL_HINT = "_Bisa batal kapan saja dengan balas *batal*._";
 
 const START_COMMANDS = new Set(["tambah batch", "tambah", "start batch", "start", "batch baru"]);
 const CANCEL_COMMANDS = new Set(["batal", "cancel"]);
+const COMPLETE_BATCH_PROMPT = `Ceritakan batch lengkap dalam satu pesan:
+
+• Jenis ikan
+• Spesifikasi produk
+• Bahan baku (kg)
+• Hasil jual (kg)
+• Trimming (kg)
+• Reject kualitas (kg)
+• Produk samping (kg)
+• Spoilage (kg)
+• Kehilangan lain (kg)
+
+Saya akan menanyakan hanya data yang masih kurang.
+
+${CANCEL_HINT}`;
+const FIELD_LABELS: Record<keyof WizardDraft, string> = {
+  manufacturingSiteId: "lokasi produksi", productionLineIds: "lini produksi", species: "jenis ikan", productSpecification: "spesifikasi produk",
+  rawInputKg: "bahan baku", sellableOutputKg: "hasil jual", trimmingKg: "trimming", qualityRejectKg: "reject kualitas",
+  byproductKg: "produk samping", spoilageKg: "spoilage", otherLossKg: "kehilangan lain"
+};
 const STEPS: Array<[WizardStep, keyof WizardDraft, string]> = [
-  ["awaiting_species", "species", "Jenis ikan apa? Contoh: tuna."],
-  ["awaiting_product_specification", "productSpecification", "Spesifikasi produk apa? Contoh: fillet beku."],
-  ["awaiting_raw_input", "rawInputKg", "Berapa bahan baku? Kirim angka dalam kg, contoh: 100."],
-  ["awaiting_sellable_output", "sellableOutputKg", "Berapa hasil jual? Kirim angka dalam kg."],
-  ["awaiting_trimming", "trimmingKg", "Berapa trimming? Kirim angka dalam kg; kirim 0 bila tidak ada."],
-  ["awaiting_quality_reject", "qualityRejectKg", "Berapa reject kualitas? Kirim angka dalam kg; kirim 0 bila tidak ada."],
-  ["awaiting_byproduct", "byproductKg", "Berapa produk samping? Kirim angka dalam kg; kirim 0 bila tidak ada."],
-  ["awaiting_spoilage", "spoilageKg", "Berapa spoilage? Kirim angka dalam kg; kirim 0 bila tidak ada."],
-  ["awaiting_other_loss", "otherLossKg", "Berapa kehilangan lain? Kirim angka dalam kg; kirim 0 bila tidak ada."]
+  ["awaiting_species", "species", "*Jenis ikan* apa yang diproses?\nContoh: tuna."],
+  ["awaiting_product_specification", "productSpecification", "*Spesifikasi produknya* apa?\nContoh: fillet beku."],
+  ["awaiting_raw_input", "rawInputKg", "Berapa *bahan baku* yang masuk?\nKirim angka dalam kg, misalnya: 100."],
+  ["awaiting_sellable_output", "sellableOutputKg", "Berapa *hasil jual* yang didapat?\nKirim angka dalam kg."],
+  ["awaiting_trimming", "trimmingKg", "Berapa *trimming*?\nKirim angka dalam kg, atau 0 bila tidak ada."],
+  ["awaiting_quality_reject", "qualityRejectKg", "Berapa *reject kualitas*?\nKirim angka dalam kg, atau 0 bila tidak ada."],
+  ["awaiting_byproduct", "byproductKg", "Berapa *produk samping*?\nKirim angka dalam kg, atau 0 bila tidak ada."],
+  ["awaiting_spoilage", "spoilageKg", "Berapa *spoilage*?\nKirim angka dalam kg, atau 0 bila tidak ada."],
+  ["awaiting_other_loss", "otherLossKg", "Berapa *kehilangan lain*?\nKirim angka dalam kg, atau 0 bila tidak ada."]
 ];
 
 function database() {
@@ -49,6 +71,10 @@ function draftOf(conversation: WhatsAppConversation): WizardDraft {
 
 function cleanText(text: string) {
   return text.trim().replace(/\s+/g, " ");
+}
+
+function withCancelHint(text: string) {
+  return `${text}\n\n${CANCEL_HINT}`;
 }
 
 function parseMass(text: string): number | undefined {
@@ -75,14 +101,71 @@ async function linesFor(profileId: string, siteId: string) {
 
 async function sitePrompt(profileId: string): Promise<WizardReply> {
   const sites = await sitesFor(profileId);
-  if (sites.length === 0) return { text: "Tidak ada lokasi produksi aktif di akun LAUT Anda. Buat lokasi di web terlebih dahulu." };
-  return { text: `Pilih lokasi produksi:\n${sites.map((site, index) => `${index + 1}. ${site.name}`).join("\n")}` };
+  if (sites.length === 0) return { text: "Belum ada *lokasi produksi aktif* di akun LAUT Anda.\n\nTambahkan lokasi melalui web terlebih dahulu." };
+  return { text: withCancelHint(`*Pilih lokasi produksi*\n\n${sites.map((site, index) => `${index + 1}. ${site.name}`).join("\n")}\n\nBalas dengan nomornya.`) };
 }
 
 async function linePrompt(profileId: string, siteId: string): Promise<WizardReply> {
   const lines = await linesFor(profileId, siteId);
-  if (lines.length === 0) return { text: "Lokasi ini belum memiliki lini produksi aktif. Buat lini di web terlebih dahulu." };
-  return { text: `Pilih satu atau beberapa lini (contoh: 1,2):\n${lines.map((line, index) => `${index + 1}. ${line.name}`).join("\n")}` };
+  if (lines.length === 0) return { text: "Lokasi ini belum memiliki *lini produksi aktif*.\n\nTambahkan lini melalui web terlebih dahulu." };
+  return { text: withCancelHint(`*Pilih lini produksi*\n\n${lines.map((line, index) => `${index + 1}. ${line.name}`).join("\n")}\n\nBalas satu nomor, atau beberapa nomor seperti: 1,2.`) };
+}
+
+function exactNameMatch<T extends { name: string }>(items: T[], value: string): T | undefined {
+  const normalized = value.trim().toLocaleLowerCase();
+  return items.find((item) => item.name.trim().toLocaleLowerCase() === normalized);
+}
+
+async function applyExtraction(conversation: WhatsAppConversation, draft: WizardDraft, extraction: BatchExtraction): Promise<string[]> {
+  const accepted: string[] = [];
+  const fields = extraction.fields;
+  const simpleFields = ["species", "productSpecification", "rawInputKg", "sellableOutputKg", "trimmingKg", "qualityRejectKg", "byproductKg", "spoilageKg", "otherLossKg"] as const;
+  for (const field of simpleFields) {
+    const value = fields[field];
+    if (value !== undefined) {
+      (draft as Record<string, unknown>)[field] = value;
+      accepted.push(field);
+    }
+  }
+  if (fields.manufacturingSiteName) {
+    const site = exactNameMatch(await sitesFor(conversation.profileId), fields.manufacturingSiteName);
+    if (site) {
+      draft.manufacturingSiteId = site.id;
+      accepted.push("manufacturingSite");
+    }
+  }
+  if (fields.productionLineNames?.length && draft.manufacturingSiteId) {
+    const availableLines = await linesFor(conversation.profileId, draft.manufacturingSiteId);
+    const matched = fields.productionLineNames.map((name) => exactNameMatch(availableLines, name));
+    if (matched.every((line): line is { id: string; name: string } => Boolean(line)) && new Set(matched.map((line) => line.id)).size === matched.length) {
+      draft.productionLineIds = matched.map((line) => line.id);
+      accepted.push("productionLineIds");
+    }
+  }
+  if (extraction.language !== "unknown") conversation.language = extraction.language;
+  return accepted;
+}
+
+async function promptForMissing(conversation: WhatsAppConversation, draft: WizardDraft): Promise<WizardReply> {
+  if (!draft.manufacturingSiteId) {
+    conversation.currentStep = "awaiting_site";
+    await saveConversation(conversation);
+    return sitePrompt(conversation.profileId);
+  }
+  if (!draft.productionLineIds?.length) {
+    conversation.currentStep = "awaiting_lines";
+    await saveConversation(conversation);
+    return linePrompt(conversation.profileId, draft.manufacturingSiteId);
+  }
+  const missing = STEPS.find(([, field]) => draft[field] === undefined);
+  if (missing) {
+    conversation.currentStep = missing[0];
+    await saveConversation(conversation);
+    return { text: withCancelHint(missing[2]) };
+  }
+  conversation.currentStep = "awaiting_review";
+  await saveConversation(conversation);
+  return review(draft);
 }
 
 function nextStep(step: WizardStep): [WizardStep, keyof WizardDraft, string] | undefined {
@@ -99,13 +182,14 @@ function review(draft: WizardDraft): WizardReply {
   const validation = validateBatch(row, draft.productionLineIds?.length ?? 0);
   const metrics = validation.metrics;
   const summary = [
-    "Tinjau batch:", `Ikan: ${draft.species}`, `Produk: ${draft.productSpecification}`,
-    `Bahan baku: ${draft.rawInputKg} kg`, `Hasil jual: ${draft.sellableOutputKg} kg`,
-    `Trimming/reject/samping/spoilage/lain: ${draft.trimmingKg}/${draft.qualityRejectKg}/${draft.byproductKg}/${draft.spoilageKg}/${draft.otherLossKg} kg`,
-    `Yield: ${metrics.sellableYieldPercent?.toFixed(2) ?? "-"}%`, `Selisih massa: ${metrics.massBalanceDifferenceKg?.toFixed(3) ?? "-"} kg`
+    "*Ringkasan batch*", "", `• Ikan: ${draft.species}`, `• Produk: ${draft.productSpecification}`,
+    `• Bahan baku: ${draft.rawInputKg} kg`, `• Hasil jual: ${draft.sellableOutputKg} kg`,
+    `• Trimming: ${draft.trimmingKg} kg`, `• Reject kualitas: ${draft.qualityRejectKg} kg`,
+    `• Produk samping: ${draft.byproductKg} kg`, `• Spoilage: ${draft.spoilageKg} kg`, `• Kehilangan lain: ${draft.otherLossKg} kg`, "",
+    `*Yield:* ${metrics.sellableYieldPercent?.toFixed(2) ?? "-"}%`, `*Selisih massa:* ${metrics.massBalanceDifferenceKg?.toFixed(3) ?? "-"} kg`
   ];
   if (!validation.isReadyToConfirm) summary.push(`Belum siap: ${[...validation.errors, ...validation.warnings].join(" ")}`);
-  summary.push(validation.isReadyToConfirm ? 'Balas "confirm" untuk menyimpan, "ubah <field>" untuk koreksi, atau "batal".' : 'Balas "ubah <field>" untuk koreksi atau "batal".');
+  summary.push(validation.isReadyToConfirm ? '\nJika sudah benar, balas *confirm*.\nUntuk koreksi, balas *ubah <field>*. Untuk berhenti, balas *batal*.' : '\nPerbaiki data dengan *ubah <field>*, atau balas *batal* untuk berhenti.');
   return { text: summary.join("\n") };
 }
 
@@ -163,12 +247,12 @@ async function confirmBatch(profileId: string, draft: WizardDraft) {
 export async function advanceBatchWizard(conversation: WhatsAppConversation, inboundText: string): Promise<WizardReply> {
   const input = cleanText(inboundText);
   const lower = input.toLowerCase();
-  const draft = draftOf(conversation);
+  let draft = draftOf(conversation);
   let step = conversation.currentStep as WizardStep;
 
   if (CANCEL_COMMANDS.has(lower)) {
     await closeConversation(conversation.id);
-    return { text: "Batch dibatalkan. Balas \"tambah batch\" untuk memulai lagi.", close: true };
+    return { text: "*Batch dibatalkan.*\n\nJika ingin mulai lagi, balas *tambah batch*.", close: true };
   }
   if (START_COMMANDS.has(lower)) {
     conversation.currentStep = "awaiting_site";
@@ -176,12 +260,34 @@ export async function advanceBatchWizard(conversation: WhatsAppConversation, inb
     await saveConversation(conversation);
     return sitePrompt(conversation.profileId);
   }
-  if (step === "awaiting_intent") return { text: "Balas \"tambah batch\" untuk mencatat batch baru." };
+  const extraction = await extractBatchCandidates(conversation, input);
+  let startedByAi = false;
+  if (step === "awaiting_intent" && extraction?.intent === "start_batch") {
+    conversation.draft = {};
+    draft = draftOf(conversation);
+    step = "awaiting_site";
+    startedByAi = true;
+  }
+  if (extraction) {
+    const accepted = await applyExtraction(conversation, draft, extraction);
+    if (accepted.length > 0) {
+      const next = await promptForMissing(conversation, draft);
+      const fieldNames: Record<string, string> = { manufacturingSite: "lokasi", ...FIELD_LABELS };
+      const ambiguity = extraction.ambiguities.length ? `\nPerlu dicek: ${extraction.ambiguities.join("; ")}` : "";
+      return { text: `*Saya catat:*\n• ${accepted.map((field) => fieldNames[field]).join("\n• ")}.${ambiguity}\n\n${next.text}` };
+    }
+  }
+  if (startedByAi) {
+    conversation.currentStep = "awaiting_site";
+    await saveConversation(conversation);
+    return sitePrompt(conversation.profileId);
+  }
+  if (step === "awaiting_intent") return { text: `Halo${conversation.profileName ? `, ${conversation.profileName}` : ""}! 👋\n\nSelamat datang di *LAUT*. Mau mencatat batch baru?\n\nBalas *tambah batch* untuk mulai.\nBalas *batal* kapan saja untuk menghentikan proses.` };
 
   if (step === "awaiting_site") {
     const sites = await sitesFor(conversation.profileId);
     const selected = sites[Number(input) - 1];
-    if (!selected) return { text: "Nomor lokasi tidak valid. " + (await sitePrompt(conversation.profileId)).text };
+    if (!selected) return { text: "Nomor lokasi belum sesuai.\n\n" + (await sitePrompt(conversation.profileId)).text };
     draft.manufacturingSiteId = selected.id;
     conversation.currentStep = "awaiting_lines";
     await saveConversation(conversation);
@@ -193,39 +299,43 @@ export async function advanceBatchWizard(conversation: WhatsAppConversation, inb
     const indexes = input.split(",").map((part) => Number(part.trim()) - 1);
     const selected = indexes.map((index) => lines[index]).filter((line): line is { id: string; name: string } => Boolean(line));
     if (!selected.length || selected.length !== indexes.length || new Set(selected.map((line) => line.id)).size !== selected.length) {
-      return { text: "Pilih nomor lini yang valid, misalnya 1 atau 1,2." };
+      return { text: "Nomor lini belum sesuai.\n\nKirim satu nomor, atau beberapa nomor seperti: 1,2." };
     }
     draft.productionLineIds = selected.map((line) => line.id);
-    conversation.currentStep = "awaiting_species";
+    conversation.currentStep = "awaiting_batch_details";
     await saveConversation(conversation);
-    return { text: STEPS[0][2] };
+    return { text: COMPLETE_BATCH_PROMPT };
+  }
+  if (step === "awaiting_batch_details") {
+    conversation.currentStep = "awaiting_species";
+    step = "awaiting_species";
   }
   if (step === "awaiting_review") {
     if (lower === "confirm") {
       const result = await confirmBatch(conversation.profileId, draft);
       if ("batchId" in result) {
         await closeConversation(conversation.id);
-        return { text: `Batch berhasil dikonfirmasi (${result.batchId}). Data terkunci dan tercatat dalam riwayat LAUT.`, close: true };
+        return { text: `*Batch berhasil dikonfirmasi* ✅\n\nID batch: ${result.batchId}\nData sudah dikunci dan tercatat di riwayat LAUT.`, close: true };
       }
       return review(draft);
     }
     const edit = /^ubah\s+(.+)$/i.exec(input);
     const editStep = edit ? stepForEdit(edit[1]) : undefined;
-    if (!editStep) return { text: 'Balas "confirm", "ubah <field>", atau "batal".' };
+    if (!editStep) return { text: 'Balas *confirm* untuk menyimpan, *ubah <field>* untuk koreksi, atau *batal* untuk berhenti.' };
     conversation.currentStep = editStep;
     await saveConversation(conversation);
-    return { text: STEPS.find(([candidate]) => candidate === editStep)![2] };
+    return { text: withCancelHint(STEPS.find(([candidate]) => candidate === editStep)![2]) };
   }
 
   const definition = STEPS.find(([candidate]) => candidate === step);
   if (!definition) throw new Error("Unknown WhatsApp wizard step.");
   const [, field, prompt] = definition;
   if (field === "species" || field === "productSpecification") {
-    if (!input || input.length > 2_000) return { text: "Masukkan teks yang valid. " + prompt };
+    if (!input || input.length > 2_000) return { text: "Mohon kirim teks yang valid.\n\n" + prompt };
     draft[field] = input;
   } else {
     const value = parseMass(input);
-    if (value === undefined) return { text: "Masukkan angka kg yang valid, misalnya 12.5." };
+    if (value === undefined) return { text: "Mohon kirim angka kg yang valid.\nContoh: 12,5" };
     (draft as Record<string, unknown>)[field] = value;
   }
   const next = nextStep(step);
@@ -236,5 +346,5 @@ export async function advanceBatchWizard(conversation: WhatsAppConversation, inb
   }
   conversation.currentStep = next[0];
   await saveConversation(conversation);
-  return { text: next[2] };
+  return { text: withCancelHint(next[2]) };
 }

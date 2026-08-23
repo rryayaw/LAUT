@@ -5,6 +5,7 @@ type Row = Record<string, unknown>;
 export type WhatsAppConversation = {
   id: string;
   profileId: string;
+  profileName: string | null;
   currentStep: string;
   language: string | null;
   draft: Record<string, unknown>;
@@ -80,6 +81,7 @@ export async function recordInboundMessage(message: InboundChannelMessage): Prom
       conversation: {
         id: conversationId,
         profileId: identity.profile_id,
+        profileName: typeof identity.display_name === "string" ? identity.display_name : null,
         currentStep: typeof conversation.current_step === "string" ? conversation.current_step : "awaiting_intent",
         language: typeof conversation.language === "string" ? conversation.language : null,
         draft: conversation.draft && typeof conversation.draft === "object" && !Array.isArray(conversation.draft)
@@ -93,9 +95,10 @@ export async function recordInboundMessage(message: InboundChannelMessage): Prom
 export async function saveConversation(conversation: WhatsAppConversation) {
   await database().$executeRawUnsafe(
     `update public.whatsapp_conversations
-     set current_step = $1, draft = $2::jsonb, last_message_at = now(), expires_at = now() + interval '24 hours'
-     where id = $3::uuid and status = 'active'`,
+     set current_step = $1, language = $2, draft = $3::jsonb, last_message_at = now(), expires_at = now() + interval '24 hours'
+     where id = $4::uuid and status = 'active'`,
     conversation.currentStep,
+    conversation.language,
     JSON.stringify(conversation.draft),
     conversation.id
   );
