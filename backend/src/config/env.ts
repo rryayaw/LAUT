@@ -13,7 +13,12 @@ const environmentSchema = z.object({
   SUPABASE_URL: z.string().url().optional(),
   SUPABASE_PUBLISHABLE_KEY: optionalSecret,
   GOOGLE_API_KEY: optionalSecret,
-  GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash-lite")
+  GEMINI_MODEL: z.string().min(1).default("gemini-3.5-flash-lite"),
+  VONAGE_API_KEY: optionalSecret,
+  VONAGE_API_SECRET: optionalSecret,
+  VONAGE_WHATSAPP_FROM: optionalSecret,
+  VONAGE_MESSAGES_API_URL: z.string().url().optional(),
+  VONAGE_SIGNATURE_SECRET: optionalSecret
 });
 
 export const env = environmentSchema.parse(process.env);

@@ -22,6 +22,8 @@ const openapi = {
   },
   paths: {
     "/health": { get: { summary: "Check backend health", responses: { "200": { description: "Backend is running" } } } },
+    "/v1/whatsapp/inbound": { post: { summary: "Receive a signed Vonage WhatsApp message", description: "Public provider callback. Vonage must send a valid signed webhook; this endpoint does not use a Supabase user token.", responses: { "204": { description: "Message accepted" }, "401": { description: "Webhook signature is missing or invalid" }, "503": { description: "Vonage Sandbox credentials are not configured" } } } },
+    "/v1/whatsapp/status": { post: { summary: "Receive a signed Vonage WhatsApp delivery status", description: "Public provider callback. Vonage must send a valid signed webhook.", responses: { "204": { description: "Status accepted" }, "401": { description: "Webhook signature is missing or invalid" }, "503": { description: "Webhook signature secret is not configured" } } } },
     "/v1/auth/me": { get: secured("Get authenticated user") },
     "/v1/capability-tags": { get: secured("List preset capability tags") },
     "/v1/manufacturing-sites": { get: secured("List owned manufacturing sites"), post: { ...secured("Create manufacturing site"), requestBody: jsonBody({ $ref: "#/components/schemas/SiteInput" }), responses: { "201": { description: "Created" } } } },
