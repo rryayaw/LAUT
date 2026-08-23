@@ -1,8 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import { getAuthenticatedUser, requireAuthenticatedUser } from "../auth/auth.middleware.js";
+import { advanceBatchWizard } from "./batch-wizard.service.js";
 import { InMemoryMessageDeduplicator } from "./in-memory-message-deduplicator.js";
-import { linkWhatsAppIdentity, recordDeliveryStatus, recordInboundMessage } from "./whatsapp-conversation.service.js";
+import { linkWhatsAppIdentity, recordDeliveryStatus, recordInboundMessage, recordOutboundMessage } from "./whatsapp-conversation.service.js";
 import { VonageWhatsAppAdapter } from "./vonage-whatsapp.adapter.js";
 
 export const whatsappRouter = Router();
@@ -30,10 +31,11 @@ whatsappRouter.post("/v1/whatsapp/inbound", async (request, response) => {
   try {
     const inbound = await recordInboundMessage(message);
     if (inbound.duplicate) return response.sendStatus(204);
-    const text = inbound.linked
-      ? `LAUT account linked${inbound.profileName ? `, ${inbound.profileName}` : ""}. Reply \"tambah batch\" to begin.`
+    const text = inbound.linked && inbound.conversation
+      ? (await advanceBatchWizard(inbound.conversation, message.text ?? "")).text
       : "This WhatsApp number is not linked to a LAUT account yet. Sign in to LAUT and link this number first.";
-    await adapter.sendText({ to: message.from, text });
+    const sent = await adapter.sendText({ to: message.from, text });
+    await recordOutboundMessage(inbound.identityId, inbound.conversation?.id, sent, text);
     return response.sendStatus(204);
   } catch (error) {
     console.error("Unable to process Vonage WhatsApp message", error instanceof Error ? error.message : error);

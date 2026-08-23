@@ -4,7 +4,7 @@ import { prisma } from "../../db/prisma.js";
 import { getAuthenticatedUser, requireAuthenticatedUser } from "../auth/auth.middleware.js";
 import { assertUserOwnsManufacturingSite } from "../processing-config/site-access.service.js";
 
-type DatabaseRow = Record<string, unknown>;
+export type BatchDatabaseRow = Record<string, unknown>;
 
 const idSchema = z.string().uuid();
 const dateSchema = z.string().date();
@@ -102,8 +102,8 @@ function route(handler: (request: Request, response: Response) => Promise<void>)
   };
 }
 
-async function assertUserOwnsBatch(userId: string, batchId: string): Promise<DatabaseRow> {
-  const rows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+async function assertUserOwnsBatch(userId: string, batchId: string): Promise<BatchDatabaseRow> {
+  const rows = await requirePrisma().$queryRawUnsafe<BatchDatabaseRow[]>(
     `select batch.id, batch.manufacturing_site_id, batch.status
      from public.production_batch as batch
      join public.manufacturing_sites as site on site.id = batch.manufacturing_site_id
@@ -130,8 +130,8 @@ async function assertLinesBelongToSite(manufacturingSiteId: string, productionLi
   }
 }
 
-async function getBatchDetail(batchId: string): Promise<DatabaseRow> {
-  const rows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+async function getBatchDetail(batchId: string): Promise<BatchDatabaseRow> {
+  const rows = await requirePrisma().$queryRawUnsafe<BatchDatabaseRow[]>(
     `select
        to_jsonb(batch) as batch,
        coalesce(
@@ -152,14 +152,14 @@ async function getBatchDetail(batchId: string): Promise<DatabaseRow> {
   return rows[0];
 }
 
-function readMass(row: DatabaseRow, key: string): number | null {
+function readMass(row: BatchDatabaseRow, key: string): number | null {
   const value = row[key];
   if (value === null || value === undefined) return null;
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
-function validateBatch(row: DatabaseRow, linkedLineCount: number) {
+export function validateBatch(row: BatchDatabaseRow, linkedLineCount: number) {
   const rawInputKg = readMass(row, "raw_input_kg");
   const sellableOutputKg = readMass(row, "sellable_output_kg");
   const lossFields = ["trimming_kg", "quality_reject_kg", "byproduct_kg", "spoilage_kg", "other_loss_kg"] as const;
@@ -217,7 +217,7 @@ batchReportingRouter.get(
     const user = getAuthenticatedUser(response);
     const siteId = request.query.manufacturingSiteId === undefined ? undefined : parseId(request.query.manufacturingSiteId);
     if (siteId) await assertUserOwnsManufacturingSite(user.id, siteId);
-    const rows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+    const rows = await requirePrisma().$queryRawUnsafe<BatchDatabaseRow[]>(
       `select batch.id, batch.manufacturing_site_id, batch.status, batch.source_channel, batch.batch_reference,
               batch.production_date, batch.species, batch.product_specification, batch.raw_input_kg,
               batch.sellable_output_kg, batch.created_at, batch.updated_at,
@@ -244,7 +244,7 @@ batchReportingRouter.post(
     await assertLinesBelongToSite(input.manufacturingSiteId, input.productionLineIds);
     const database = requirePrisma();
     const batch = await database.$transaction(async (transaction) => {
-      const rows = await transaction.$queryRawUnsafe<DatabaseRow[]>(
+      const rows = await transaction.$queryRawUnsafe<BatchDatabaseRow[]>(
         `insert into public.production_batch (
           manufacturing_site_id, source_channel, batch_reference, production_date, species, product_specification,
           raw_input_kg, sellable_output_kg, trimming_kg, quality_reject_kg, byproduct_kg, spoilage_kg, other_loss_kg,
@@ -348,7 +348,7 @@ batchReportingRouter.get(
     const user = getAuthenticatedUser(response);
     const batchId = parseId(request.params.batchId);
     await assertUserOwnsBatch(user.id, batchId);
-    const rows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+    const rows = await requirePrisma().$queryRawUnsafe<BatchDatabaseRow[]>(
       `select batch.*, count(link.production_line_id)::int as linked_line_count
        from public.production_batch as batch
        left join public.production_batch_lines as link on link.production_batch_id = batch.id
@@ -370,7 +370,7 @@ batchReportingRouter.post(
     const ownedBatch = await assertUserOwnsBatch(user.id, batchId);
     if (ownedBatch.status !== "draft") throw new ApiError(409, "Only draft production batches can be confirmed.");
 
-    const validationRows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+    const validationRows = await requirePrisma().$queryRawUnsafe<BatchDatabaseRow[]>(
       `select batch.*, count(link.production_line_id)::int as linked_line_count
        from public.production_batch as batch
        left join public.production_batch_lines as link on link.production_batch_id = batch.id
@@ -388,7 +388,7 @@ batchReportingRouter.post(
 
     const database = requirePrisma();
     await database.$transaction(async (transaction) => {
-      const confirmed = await transaction.$queryRawUnsafe<DatabaseRow[]>(
+      const confirmed = await transaction.$queryRawUnsafe<BatchDatabaseRow[]>(
         `update public.production_batch
          set status = 'confirmed', confirmed_at = now()
          where id = $1::uuid and status = 'draft'
@@ -414,7 +414,7 @@ batchReportingRouter.get(
     const user = getAuthenticatedUser(response);
     const batchId = parseId(request.params.batchId);
     await assertUserOwnsBatch(user.id, batchId);
-    const rows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+    const rows = await requirePrisma().$queryRawUnsafe<BatchDatabaseRow[]>(
       `select id, event_type, metadata, created_at
        from public.production_batch_audit_events
        where production_batch_id = $1::uuid
@@ -433,7 +433,7 @@ batchReportingRouter.get(
     const subject = await assertUserOwnsBatch(user.id, batchId);
     if (typeof subject.manufacturing_site_id !== "string") throw new ApiError(500, "Batch site is invalid.");
 
-    const subjectRows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+    const subjectRows = await requirePrisma().$queryRawUnsafe<BatchDatabaseRow[]>(
       `select species, product_specification, fish_size_category, storage_state
        from public.production_batch
        where id = $1::uuid`,
@@ -444,7 +444,7 @@ batchReportingRouter.get(
       throw new ApiError(422, "Species and productSpecification are required before comparable batches can be retrieved.");
     }
 
-    const rows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+    const rows = await requirePrisma().$queryRawUnsafe<BatchDatabaseRow[]>(
       `with subject_lines as (
          select production_line_id from public.production_batch_lines where production_batch_id = $1::uuid
        ), subject_capability_tags as (

@@ -1,8 +1,16 @@
 import { prisma } from "../../db/prisma.js";
-import type { DeliveryStatus, InboundChannelMessage } from "./messaging-channel.types.js";
+import type { DeliveryStatus, InboundChannelMessage, SentChannelMessage } from "./messaging-channel.types.js";
 
 type Row = Record<string, unknown>;
-type InboundResult = { duplicate: boolean; linked: boolean; profileName: string | null; identityId?: string; conversationId?: string };
+export type WhatsAppConversation = {
+  id: string;
+  profileId: string;
+  currentStep: string;
+  language: string | null;
+  draft: Record<string, unknown>;
+};
+
+type InboundResult = { duplicate: boolean; linked: boolean; profileName: string | null; identityId?: string; conversation?: WhatsAppConversation };
 
 function database() {
   if (!prisma) throw new Error("Database access is not configured.");
@@ -41,7 +49,7 @@ export async function recordInboundMessage(message: InboundChannelMessage): Prom
     );
     if (!inserted[0]) return { duplicate: true, linked: false, profileName: null };
     const identities = await tx.$queryRawUnsafe<Row[]>(
-      `select identity.id, profile.display_name from public.whatsapp_identities identity join public.profiles profile on profile.id = identity.profile_id
+      `select identity.id, identity.profile_id, profile.display_name from public.whatsapp_identities identity join public.profiles profile on profile.id = identity.profile_id
        where identity.provider = $1 and identity.channel = $2 and identity.external_identity = $3 limit 1`,
       message.provider, message.channel, normalizeWhatsAppNumber(message.from)
     );
@@ -49,21 +57,69 @@ export async function recordInboundMessage(message: InboundChannelMessage): Prom
     if (!identity || typeof identity.id !== "string") return { duplicate: false, linked: false, profileName: null };
     await tx.$executeRawUnsafe(`update public.whatsapp_conversations set status = 'expired' where whatsapp_identity_id = $1::uuid and status = 'active' and expires_at <= now()`, identity.id);
     let conversations = await tx.$queryRawUnsafe<Row[]>(
-      `select id from public.whatsapp_conversations where whatsapp_identity_id = $1::uuid and status = 'active' and expires_at > now() limit 1`, identity.id
+      `select id, current_step, language, draft from public.whatsapp_conversations where whatsapp_identity_id = $1::uuid and status = 'active' and expires_at > now() limit 1`, identity.id
     );
     if (!conversations[0]) {
       conversations = await tx.$queryRawUnsafe<Row[]>(
-        `insert into public.whatsapp_conversations (whatsapp_identity_id) values ($1::uuid) returning id`, identity.id
+        `insert into public.whatsapp_conversations (whatsapp_identity_id) values ($1::uuid) returning id, current_step, language, draft`, identity.id
       );
     }
-    const conversationId = conversations[0]?.id;
+    const conversation = conversations[0];
+    const conversationId = conversation?.id;
+    if (typeof conversationId !== "string" || typeof identity.profile_id !== "string") throw new Error("WhatsApp conversation data is invalid.");
     await tx.$executeRawUnsafe(
       `update public.whatsapp_messages set whatsapp_identity_id = $1::uuid, whatsapp_conversation_id = $2::uuid where id = $3::uuid`,
       identity.id, conversationId, inserted[0].id
     );
     await tx.$executeRawUnsafe(`update public.whatsapp_conversations set last_message_at = now() where id = $1::uuid`, conversationId);
-    return { duplicate: false, linked: true, profileName: typeof identity.display_name === 'string' ? identity.display_name : null, identityId: identity.id, conversationId: typeof conversationId === 'string' ? conversationId : undefined };
+    return {
+      duplicate: false,
+      linked: true,
+      profileName: typeof identity.display_name === "string" ? identity.display_name : null,
+      identityId: identity.id as string,
+      conversation: {
+        id: conversationId,
+        profileId: identity.profile_id,
+        currentStep: typeof conversation.current_step === "string" ? conversation.current_step : "awaiting_intent",
+        language: typeof conversation.language === "string" ? conversation.language : null,
+        draft: conversation.draft && typeof conversation.draft === "object" && !Array.isArray(conversation.draft)
+          ? conversation.draft as Record<string, unknown>
+          : {}
+      }
+    };
   });
+}
+
+export async function saveConversation(conversation: WhatsAppConversation) {
+  await database().$executeRawUnsafe(
+    `update public.whatsapp_conversations
+     set current_step = $1, draft = $2::jsonb, last_message_at = now(), expires_at = now() + interval '24 hours'
+     where id = $3::uuid and status = 'active'`,
+    conversation.currentStep,
+    JSON.stringify(conversation.draft),
+    conversation.id
+  );
+}
+
+export async function closeConversation(conversationId: string) {
+  await database().$executeRawUnsafe(
+    `update public.whatsapp_conversations set status = 'closed', last_message_at = now() where id = $1::uuid and status = 'active'`,
+    conversationId
+  );
+}
+
+export async function recordOutboundMessage(identityId: string | undefined, conversationId: string | undefined, message: SentChannelMessage, text: string) {
+  await database().$executeRawUnsafe(
+    `insert into public.whatsapp_messages (whatsapp_identity_id, whatsapp_conversation_id, provider, channel, external_message_id, direction, message_type, text_content)
+     values ($1::uuid, $2::uuid, $3, $4, $5, 'outbound', 'text', $6)
+     on conflict (provider, channel, external_message_id) do nothing`,
+    identityId ?? null,
+    conversationId ?? null,
+    message.provider,
+    message.channel,
+    message.externalMessageId,
+    text
+  );
 }
 
 export async function recordDeliveryStatus(status: DeliveryStatus) {

@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { env } from "../../config/env.js";
-import type { DeliveryStatus, InboundChannelMessage, MessagingChannelAdapter } from "./messaging-channel.types.js";
+import type { DeliveryStatus, InboundChannelMessage, MessagingChannelAdapter, SentChannelMessage } from "./messaging-channel.types.js";
 
 const inboundMessageSchema = z.object({
   channel: z.literal("whatsapp"),
@@ -63,7 +63,7 @@ export class VonageWhatsAppAdapter implements MessagingChannelAdapter {
     return { provider: "vonage", channel: "whatsapp", externalMessageId: parsed.data.message_uuid, status: parsed.data.status };
   }
 
-  async sendText({ to, text }: { to: string; text: string }) {
+  async sendText({ to, text }: { to: string; text: string }): Promise<SentChannelMessage> {
     if (!this.isConfigured()) throw new Error("Vonage WhatsApp is not configured.");
     const basicCredentials = Buffer.from(`${env.VONAGE_API_KEY}:${env.VONAGE_API_SECRET}`).toString("base64");
     const response = await fetch(env.VONAGE_MESSAGES_API_URL!, {
@@ -72,5 +72,10 @@ export class VonageWhatsAppAdapter implements MessagingChannelAdapter {
       body: JSON.stringify({ from: env.VONAGE_WHATSAPP_FROM, to, message_type: "text", text, channel: "whatsapp" })
     });
     if (!response.ok) throw new Error(`Vonage Messages API returned ${response.status}`);
+    const payload = await response.json().catch(() => undefined) as { message_uuid?: unknown } | undefined;
+    if (!payload || typeof payload.message_uuid !== "string" || payload.message_uuid.trim() === "") {
+      throw new Error("Vonage Messages API response did not include a message UUID.");
+    }
+    return { provider: "vonage", channel: "whatsapp", externalMessageId: payload.message_uuid };
   }
 }
