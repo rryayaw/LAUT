@@ -111,6 +111,29 @@ optional and requires GOOGLE_API_KEY. If the Phase 6 migration has not yet
 been applied, the batch still confirms but its WhatsApp analysis will be shown
 as unavailable.
 
+## Tests
+
+Run the deterministic suite from the backend directory:
+
+```powershell
+npm test
+```
+
+It does not call Gemini, Vonage, or the hosted database. To verify saved
+analysis persistence against a running local backend and the configured
+test-user token, use:
+
+```powershell
+npm run dev
+# In another terminal:
+npm run test:hosted
+```
+
+The hosted test uses an existing confirmed batch owned by
+TEST_SUPABASE_ACCESS_TOKEN. It may create that batch's first saved analysis
+and, on its first run, creates the reusable PHASE7-INTEGRATION batch. Use the
+dedicated LAUT test user, never a customer account.
+
 ## Notes
 
 - Supabase migrations in `supabase/migrations/` must be applied to the hosted project before using data routes.
