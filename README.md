@@ -43,6 +43,74 @@ GEMINI_MODEL=gemini-3.5-flash-lite
 
 Never commit real environment files or use a Supabase service-role/secret key in the application.
 
+## Test the WhatsApp bot
+
+The current integration uses the Vonage WhatsApp Sandbox. Each tester needs
+their own LAUT user, at least one manufacturing site with an active production
+line, and a WhatsApp number that has joined the Sandbox. The manual identity
+link below is a development-only shortcut; it must not be exposed as a
+self-service production feature until phone ownership is verified.
+
+1. Apply the repository's Supabase migrations to the test project. This
+   includes the WhatsApp conversation tables and the production batch analyses
+   table used after confirmation.
+2. Start the backend and expose port 8000 through an HTTPS tunnel:
+
+   ```powershell
+   cd backend
+   npm run dev
+   ngrok http 8000
+   ```
+
+3. In the Vonage Sandbox application, configure the tunnel URL as the signed
+   webhook endpoints:
+
+   ```text
+   https://<your-tunnel-host>/v1/whatsapp/inbound
+   https://<your-tunnel-host>/v1/whatsapp/status
+   ```
+
+4. Add these Vonage values to backend/.env, using the Sandbox sender and
+   signing secret from that application:
+
+   ```env
+   VONAGE_API_KEY=<vonage-api-key>
+   VONAGE_API_SECRET=<vonage-api-secret>
+   VONAGE_WHATSAPP_FROM=<sandbox-sender-number>
+   VONAGE_MESSAGES_API_URL=https://messages-sandbox.nexmo.com/v1/messages
+   VONAGE_SIGNATURE_SECRET=<webhook-signature-secret>
+   ```
+
+5. Sign in as the tester in Swagger at http://localhost:8000/docs using their
+   Supabase access token, then call PUT /v1/whatsapp/identity with the
+   tester's number in international format:
+
+   ```json
+   { "phoneNumber": "+628123456789" }
+   ```
+
+   That number can be linked to only one LAUT profile. The tester must also
+   create their own site and active line through the authenticated API before
+   starting a batch.
+
+6. From that linked WhatsApp number, send tambah batch. Follow the prompts,
+   or send one informal message with the batch details. The bot asks for only
+   the remaining values, then shows a deterministic review. Send confirm to
+   create the immutable batch, or batal at any time to stop.
+
+   Example informal message:
+
+   ```text
+   tuna fillet beku, bahan baku 100 kg, hasil jual 70 kg, trimming 10 kg,
+   reject kualitas 5 kg, produk samping 10 kg, spoilage 3 kg, kehilangan lain 2 kg
+   ```
+
+After confirmation, LAUT saves a deterministic analysis. A baseline label
+requires at least three comparable confirmed batches; Gemini guidance is
+optional and requires GOOGLE_API_KEY. If the Phase 6 migration has not yet
+been applied, the batch still confirms but its WhatsApp analysis will be shown
+as unavailable.
+
 ## Notes
 
 - Supabase migrations in `supabase/migrations/` must be applied to the hosted project before using data routes.
