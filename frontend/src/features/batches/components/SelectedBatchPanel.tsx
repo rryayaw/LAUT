@@ -55,7 +55,10 @@ export function SelectedBatchPanel({ batch, onConfirm, onUpdateQuantities }: Rea
       : undefined;
 
   return (
-    <aside aria-labelledby="selected-batch-title" className="sticky top-14 border-y border-[var(--line)] bg-[var(--surface)]">
+    <aside
+      aria-labelledby="selected-batch-title"
+      className="sticky top-14 max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-y border-[var(--line)] bg-[var(--surface)]"
+    >
       <header className="border-b border-[var(--line)] px-5 py-4">
         <p className="text-xs font-medium text-[var(--muted)]">Selected batch</p>
         <div className="mt-2 flex items-start justify-between gap-4">

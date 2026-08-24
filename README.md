@@ -118,8 +118,9 @@ self-service production feature until phone ownership is verified.
    Example informal message:
 
    ```text
-   tuna fillet beku, bahan baku 100 kg, hasil jual 70 kg, trimming 10 kg,
-   reject kualitas 5 kg, produk samping 10 kg, spoilage 3 kg, kehilangan lain 2 kg
+   Tadi pagi saya proses tuna fillet beku. Bahan bakunya 100 kg, hasil jual 70 kg.
+   Ada trimming 10 kg, reject kualitas 5 kg, produk samping 10 kg, spoilage 3 kg,
+   dan kehilangan lainnya 2 kg.
    ```
 
 After confirmation, LAUT saves a deterministic analysis. A baseline label
