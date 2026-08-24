@@ -12,7 +12,11 @@ const siteInputSchema = z.object({
   name: z.string().trim().min(1).max(160),
   timezone: z.string().trim().min(1).max(80).default("Asia/Jakarta"),
   location: optionalText,
-  notes: optionalText
+  notes: optionalText,
+  productConfigs: z.array(z.object({
+    species: z.string().trim().min(1).max(160),
+    productSpecification: z.string().trim().min(1).max(240)
+  })).max(50).default([])
 });
 const siteUpdateSchema = siteInputSchema.partial();
 const lineInputSchema = z.object({
@@ -27,6 +31,10 @@ const tagAssignmentSchema = z.object({
 });
 const tagAssignmentUpdateSchema = z.object({
   otherContext: optionalText
+});
+const productConfigInputSchema = z.object({
+  species: z.string().trim().min(1).max(160),
+  productSpecification: z.string().trim().min(1).max(240)
 });
 
 function requirePrisma() {
@@ -141,17 +149,64 @@ processingConfigRouter.post(
   route(async (request, response) => {
     const user = getAuthenticatedUser(response);
     const input = parseOrThrow(siteInputSchema, request.body);
+    const site = await requirePrisma().$transaction(async (transaction) => {
+      const rows = await transaction.$queryRawUnsafe<DatabaseRow[]>(
+        `insert into public.manufacturing_sites (owner_id, name, timezone, location, notes)
+         values ($1::uuid, $2, $3, $4, $5)
+         returning id, name, timezone, location, notes, created_at, updated_at`,
+        user.id, input.name, input.timezone, nullableText(input.location), nullableText(input.notes)
+      );
+      const created = rows[0];
+      if (!created || typeof created.id !== "string") throw new ApiError(500, "Site creation did not return an ID.");
+      for (const config of input.productConfigs) {
+        await transaction.$executeRawUnsafe(
+          `insert into public.site_product_configs (manufacturing_site_id, species, product_specification)
+           values ($1::uuid, $2, $3)`, created.id, config.species, config.productSpecification
+        );
+      }
+      return created;
+    });
+    response.status(201).json({ manufacturingSite: site });
+  })
+);
+
+processingConfigRouter.get(
+  "/v1/product-configs",
+  route(async (_request, response) => {
+    const user = getAuthenticatedUser(response);
     const rows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
-      `insert into public.manufacturing_sites (owner_id, name, timezone, location, notes)
-       values ($1::uuid, $2, $3, $4, $5)
-       returning id, name, timezone, location, notes, created_at, updated_at`,
-      user.id,
-      input.name,
-      input.timezone,
-      nullableText(input.location),
-      nullableText(input.notes)
+      `select config.id, config.manufacturing_site_id, config.species, config.product_specification,
+              site.name as site_name,
+              coalesce(percentile_cont(0.5) within group (order by batch.sellable_output_kg / nullif(batch.raw_input_kg, 0) * 100), 0) as observed_median_yield_pct,
+              count(batch.id)::integer as sample_size
+       from public.site_product_configs as config
+       join public.manufacturing_sites as site on site.id = config.manufacturing_site_id
+       left join public.production_batch as batch on batch.manufacturing_site_id = config.manufacturing_site_id
+         and lower(batch.species) = lower(config.species)
+         and lower(batch.product_specification) = lower(config.product_specification)
+         and batch.status in ('confirmed', 'analyzed', 'closed')
+       where site.owner_id = $1::uuid
+       group by config.id, site.name
+       order by site.name asc, config.species asc, config.product_specification asc`, user.id
     );
-    response.status(201).json({ manufacturingSite: rows[0] });
+    response.status(200).json({ productConfigs: rows });
+  })
+);
+
+processingConfigRouter.post(
+  "/v1/manufacturing-sites/:siteId/product-configs",
+  route(async (request, response) => {
+    const user = getAuthenticatedUser(response);
+    const siteId = parseId(request.params.siteId);
+    const input = parseOrThrow(productConfigInputSchema, request.body);
+    await assertUserOwnsManufacturingSite(user.id, siteId);
+    const rows = await requirePrisma().$queryRawUnsafe<DatabaseRow[]>(
+      `insert into public.site_product_configs (manufacturing_site_id, species, product_specification)
+       values ($1::uuid, $2, $3)
+       returning id, manufacturing_site_id, species, product_specification, created_at, updated_at`,
+      siteId, input.species, input.productSpecification
+    );
+    response.status(201).json({ productConfig: rows[0] });
   })
 );
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Check, FileText, Info, Repeat, X } from "lucide-react";
+import { BarChart3, Check, FileText, Repeat, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,9 +79,6 @@ export function InvestigationDetail({ investigation, onDecide }: Readonly<Invest
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-[11px] leading-4 text-[var(--muted)]">
-            These are associations worth checking, not proven causes.
-          </p>
         </section>
 
         <section aria-labelledby="recommendation-title" className="border-b border-[var(--line)] bg-[var(--brand-soft)] px-5 py-4">
@@ -89,17 +86,6 @@ export function InvestigationDetail({ investigation, onDecide }: Readonly<Invest
           <p className="mt-2 text-sm font-medium leading-6 text-[var(--ink)]">{investigation.recommendedCheck}</p>
         </section>
 
-        <section aria-labelledby="limitations-title" className="border-b border-[var(--line)] px-5 py-4">
-          <div className="flex items-center gap-2 text-xs font-medium text-[var(--muted)]">
-            <Info aria-hidden="true" size={14} strokeWidth={1.75} />
-            <h3 id="limitations-title">What this evidence cannot show</h3>
-          </div>
-          <ul className="mt-2 space-y-1.5">
-            {investigation.limitations.map((limitation, index) => (
-              <li className="text-xs leading-5 text-[var(--muted)]" key={index}>{limitation}</li>
-            ))}
-          </ul>
-        </section>
 
         {investigation.outcome ? (
           <section aria-labelledby="outcome-title" className="px-5 py-4">

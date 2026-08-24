@@ -231,9 +231,8 @@ export type Investigation = {
 
 /**
  * A species and specification the site actually processes, which is what LAUT
- * compares batches within. There is no configuration table behind this yet, so it
- * is observed from confirmed batches rather than declared: the yield figure is the
- * median that was measured, not a target anyone set.
+ * compares batches within. It is declared for each production site; the yield
+ * figure remains an observed median, not a target anyone set.
  */
 export type ProductConfig = {
   id: string;

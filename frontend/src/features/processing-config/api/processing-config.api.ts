@@ -1,14 +1,12 @@
 // Processing configuration: what LAUT treats as comparable, how loss is
 // categorised, and the measurement tolerance it applies.
 //
-// The backend has no configuration table yet, so the comparison basis is observed
-// from confirmed batches rather than declared. The loss taxonomy is not observed —
-// it is the fixed set of mass-balance columns the API accepts, so it is stated here
-// as a contract rather than fetched.
+// Fish products are declared per production site. The loss taxonomy is not
+// configurable: it is the fixed set of mass-balance columns the API accepts.
 
 import type { LossCategoryConfig, ProcessTag, ProductConfig } from "@/types/domain";
-import { listBatches } from "@/features/batches/api/batches.api";
 import { listProcessTags as listCapabilityTags } from "@/features/production-sites/api/production-sites.api";
+import { apiRequest, toNumber } from "@/api/client";
 import { DEFAULT_TOLERANCE_PCT } from "@/features/batches/utils/batch-metrics";
 
 export type ProductConfigListItem = ProductConfig & { siteName: string };
@@ -59,48 +57,34 @@ const LOSS_CATEGORIES: LossCategoryConfig[] = [
   }
 ];
 
-function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
-  const middle = Math.floor(sorted.length / 2);
-  const value = sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
-  return Math.round(value * 10) / 10;
+type ProductConfigRow = {
+  id: string;
+  manufacturing_site_id: string;
+  species: string;
+  product_specification: string;
+  site_name: string;
+  observed_median_yield_pct: number | string;
+  sample_size: number | string;
+};
+
+/** One row per fish product declared for a production site. */
+export async function listProductConfigs(): Promise<ProductConfigListItem[]> {
+  const { productConfigs } = await apiRequest<{ productConfigs: ProductConfigRow[] }>("/v1/product-configs");
+  return productConfigs.map((config) => ({
+    id: config.id,
+    productionSiteId: config.manufacturing_site_id,
+    species: config.species,
+    productSpec: config.product_specification,
+    chilledOrFrozen: /frozen/i.test(config.product_specification) ? "frozen" : "chilled",
+    observedMedianYieldPct: Math.round((toNumber(config.observed_median_yield_pct) ?? 0) * 10) / 10,
+    sampleSize: toNumber(config.sample_size) ?? 0,
+    massBalanceTolerancePct: DEFAULT_TOLERANCE_PCT,
+    siteName: config.site_name
+  }));
 }
 
-/**
- * One row per species and specification the site has actually confirmed batches
- * for. Only trusted records contribute, so a draft cannot introduce a comparison
- * basis that no one has reviewed.
- */
-export async function listProductConfigs(): Promise<ProductConfigListItem[]> {
-  const batches = await listBatches({ status: ["confirmed", "analyzed", "closed"] });
-  const groups = new Map<string, typeof batches>();
-
-  for (const batch of batches) {
-    const key = `${batch.productionSiteId}|${batch.species}|${batch.productSpec}`;
-    groups.set(key, [...(groups.get(key) ?? []), batch]);
-  }
-
-  return [...groups.entries()]
-    .map(([key, group]) => {
-      const first = group[0];
-      const yields = group
-        .map((batch) => batch.analysis.metrics.sellableYieldPct)
-        .filter((value): value is number => value !== undefined);
-
-      return {
-        id: key,
-        productionSiteId: first.productionSiteId,
-        species: first.species,
-        productSpec: first.productSpec,
-        // `storage_state` is the only field describing how product is held.
-        chilledOrFrozen: /frozen/i.test(first.productSpec) ? "frozen" : "chilled",
-        observedMedianYieldPct: yields.length > 0 ? median(yields) : 0,
-        sampleSize: group.length,
-        massBalanceTolerancePct: DEFAULT_TOLERANCE_PCT,
-        siteName: first.siteName
-      } satisfies ProductConfigListItem;
-    })
-    .sort((left, right) => left.species.localeCompare(right.species) || left.productSpec.localeCompare(right.productSpec));
+export async function addSiteProductConfig(siteId: string, input: { species: string; productSpecification: string }): Promise<void> {
+  await apiRequest(`/v1/manufacturing-sites/${siteId}/product-configs`, { method: "POST", body: input });
 }
 
 export async function listLossCategories(): Promise<LossCategoryConfig[]> {

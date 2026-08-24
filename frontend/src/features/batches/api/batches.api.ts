@@ -52,7 +52,7 @@ function toBatch(row: DetailRow): Batch {
 
   return {
     id,
-    code: toText(batch.batch_reference) ?? `B-${id.slice(0, 6)}`,
+    code: toText(batch.batch_reference) ?? "Batch reference pending",
     productionSiteId: String(batch.manufacturing_site_id),
     productionLineIds: row.production_lines.map((line) => line.id),
     species: toText(batch.species) ?? "Unspecified species",

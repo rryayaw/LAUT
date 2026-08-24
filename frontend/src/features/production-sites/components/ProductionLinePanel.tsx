@@ -26,10 +26,6 @@ export function ProductionLinePanel({ line, onAddMachine, processTags }: Readonl
           <h3 id="line-context-title">Saved operational context</h3>
         </div>
         <p className="mt-3 text-sm leading-6 text-[var(--ink)]">{line.description}</p>
-        <p className="mt-3 border-t border-[var(--line)] pt-3 text-xs leading-5 text-[var(--muted)]">
-          Retrievable as supporting context for AI explanation. It is never converted into a production
-          measurement without confirmation.
-        </p>
       </section>
 
       <section aria-labelledby="line-tags-title" className="border-b border-[var(--line)] px-5 py-4">

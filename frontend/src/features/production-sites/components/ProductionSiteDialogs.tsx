@@ -36,7 +36,10 @@ export function AddProductionSiteDialog({ onAddSite }: Readonly<{ onAddSite: (va
     const data = new FormData(event.currentTarget);
     onAddSite({
       name: String(data.get("site-name") ?? ""),
-      location: String(data.get("location") ?? "")
+      location: String(data.get("location") ?? ""),
+      productConfigs: String(data.get("species") ?? "").trim() && String(data.get("product-specification") ?? "").trim()
+        ? [{ species: String(data.get("species")), productSpecification: String(data.get("product-specification")) }]
+        : []
     });
     event.currentTarget.reset();
     setOpen(false);
@@ -66,6 +69,14 @@ export function AddProductionSiteDialog({ onAddSite }: Readonly<{ onAddSite: (va
             <FormField id="location" label="Location">
               <Input className={inputClass} id="location" name="location" placeholder="e.g. Muara Baru, Jakarta Utara" required />
             </FormField>
+            <div className="border-t border-[var(--line)] pt-4">
+              <p className="text-xs font-medium text-[var(--ink)]">First fish product <span className="font-normal text-[var(--muted)]">(optional)</span></p>
+              <p className="mt-1 text-xs leading-5 text-[var(--muted)]">Set the species and product specification this site will report. You can add more after creating the site.</p>
+              <div className="mt-3 grid grid-cols-2 gap-4">
+                <FormField id="species" label="Fish species"><Input className={inputClass} id="species" name="species" placeholder="e.g. Red snapper" /></FormField>
+                <FormField id="product-specification" label="Product specification"><Input className={inputClass} id="product-specification" name="product-specification" placeholder="e.g. Frozen fillet" /></FormField>
+              </div>
+            </div>
           </div>
           <DialogFooter className="gap-3 border-t border-[var(--line)] px-6 py-4 sm:justify-between sm:space-x-0">
             <DialogClose asChild>
@@ -81,6 +92,24 @@ export function AddProductionSiteDialog({ onAddSite }: Readonly<{ onAddSite: (va
       </DialogContent>
     </Dialog>
   );
+}
+
+export function AddFishProductDialog({ onAdd }: Readonly<{ onAdd: (values: { species: string; productSpecification: string }) => void }>) {
+  const [open, setOpen] = useState(false);
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    onAdd({ species: String(data.get("fish-species") ?? ""), productSpecification: String(data.get("fish-product-specification") ?? "") });
+    event.currentTarget.reset();
+    setOpen(false);
+  }
+  return <Dialog onOpenChange={setOpen} open={open}>
+    <DialogTrigger asChild><Button className="h-auto rounded-none border-[var(--line-strong)] bg-[var(--surface)] px-3 py-2 text-[var(--brand)] shadow-none hover:bg-[var(--brand-soft)]" type="button" variant="outline"><Plus aria-hidden="true" size={15} strokeWidth={1.75} /> Add fish product</Button></DialogTrigger>
+    <DialogContent className={`${dialogClass} max-w-[32rem]`}>
+      <DialogHeader className="border-b border-[var(--line)] px-6 py-5 text-left"><p className="text-xs font-medium text-[var(--brand)]">Site setup</p><DialogTitle className="mt-1 text-xl font-semibold tracking-tight text-[var(--ink)]">Add fish product</DialogTitle><DialogDescription className="mt-2 text-sm leading-6 text-[var(--muted)]">Batches for this site can select this species and specification.</DialogDescription></DialogHeader>
+      <form onSubmit={handleSubmit}><div className="grid grid-cols-2 gap-4 px-6 py-5"><FormField id="fish-species" label="Fish species"><Input autoFocus className={inputClass} id="fish-species" name="fish-species" placeholder="e.g. Tuna" required /></FormField><FormField id="fish-product-specification" label="Product specification"><Input className={inputClass} id="fish-product-specification" name="fish-product-specification" placeholder="e.g. Frozen loin" required /></FormField></div><DialogFooter className="gap-3 border-t border-[var(--line)] px-6 py-4 sm:justify-between sm:space-x-0"><DialogClose asChild><Button className="rounded-none" type="button" variant="outline">Cancel</Button></DialogClose><Button className="rounded-none bg-[var(--brand)] text-white hover:bg-[var(--brand-strong)]" type="submit">Add product</Button></DialogFooter></form>
+    </DialogContent>
+  </Dialog>;
 }
 
 type AddProductionLineDialogProps = {

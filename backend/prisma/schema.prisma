@@ -43,9 +43,24 @@ model ManufacturingSite {
   owner           Profile          @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   productionLines ProductionLine[]
   productionBatches ProductionBatch[]
+  productConfigs   SiteProductConfig[]
 
   @@index([ownerId])
   @@map("manufacturing_sites")
+  @@schema("public")
+}
+
+model SiteProductConfig {
+  id                   String            @id @default(uuid()) @db.Uuid
+  manufacturingSiteId  String            @map("manufacturing_site_id") @db.Uuid
+  species              String            @db.Text
+  productSpecification String            @map("product_specification") @db.Text
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
+  manufacturingSite    ManufacturingSite @relation(fields: [manufacturingSiteId], references: [id], onDelete: Cascade)
+
+  @@index([manufacturingSiteId])
+  @@map("site_product_configs")
   @@schema("public")
 }
 

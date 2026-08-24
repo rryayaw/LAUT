@@ -21,7 +21,6 @@ const productionLineIdsSchema = z
   .refine((ids) => new Set(ids).size === ids.length, "Production line IDs must be unique.");
 
 const batchFieldsSchema = z.object({
-  batchReference: optionalText,
   productionDate: dateSchema.optional(),
   species: optionalText,
   productSpecification: optionalText,
@@ -258,15 +257,15 @@ batchReportingRouter.post(
     const batch = await database.$transaction(async (transaction) => {
       const rows = await transaction.$queryRawUnsafe<BatchDatabaseRow[]>(
         `insert into public.production_batch (
-          manufacturing_site_id, source_channel, batch_reference, production_date, species, product_specification,
+          manufacturing_site_id, source_channel, production_date, species, product_specification,
           raw_input_kg, sellable_output_kg, trimming_kg, quality_reject_kg, byproduct_kg, spoilage_kg, other_loss_kg,
           supplier, shift, fish_size_category, storage_state, receiving_condition, receiving_temperature_c,
           delivery_delay_minutes, production_duration_minutes, operator_notes
         ) values (
-          $1::uuid, $2, $3, coalesce($4::date, current_date), $5, $6, $7, $8, $9, $10, $11, $12, $13,
-          $14, $15, $16, $17, $18, $19, $20, $21, $22
+          $1::uuid, $2, coalesce($3::date, current_date), $4, $5, $6, $7, $8, $9, $10, $11, $12,
+          $13, $14, $15, $16, $17, $18, $19, $20, $21
         ) returning id`,
-        input.manufacturingSiteId, input.sourceChannel, nullable(input.batchReference), input.productionDate ?? null,
+        input.manufacturingSiteId, input.sourceChannel, input.productionDate ?? null,
         nullable(input.species), nullable(input.productSpecification), nullable(input.rawInputKg), nullable(input.sellableOutputKg),
         nullable(input.trimmingKg), nullable(input.qualityRejectKg), nullable(input.byproductKg), nullable(input.spoilageKg),
         nullable(input.otherLossKg), nullable(input.supplier), nullable(input.shift), nullable(input.fishSizeCategory),
@@ -324,7 +323,7 @@ batchReportingRouter.patch(
     if (input.productionLineIds) await assertLinesBelongToSite(batch.manufacturing_site_id, input.productionLineIds);
 
     const columnByField: Record<string, string> = {
-      batchReference: "batch_reference", productionDate: "production_date", species: "species",
+      productionDate: "production_date", species: "species",
       productSpecification: "product_specification", rawInputKg: "raw_input_kg", sellableOutputKg: "sellable_output_kg",
       trimmingKg: "trimming_kg", qualityRejectKg: "quality_reject_kg", byproductKg: "byproduct_kg",
       spoilageKg: "spoilage_kg", otherLossKg: "other_loss_kg", supplier: "supplier", shift: "shift",

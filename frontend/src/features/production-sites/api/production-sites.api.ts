@@ -79,12 +79,13 @@ export async function getProductionSite(siteId: string): Promise<ProductionSite 
 export type CreateProductionSiteInput = {
   name: string;
   location: string;
+  productConfigs?: Array<{ species: string; productSpecification: string }>;
 };
 
 export async function createProductionSite(input: CreateProductionSiteInput): Promise<ProductionSite> {
   const { manufacturingSite } = await apiRequest<{ manufacturingSite: SiteRow }>("/v1/manufacturing-sites", {
     method: "POST",
-    body: { name: input.name, location: toText(input.location) ?? null, timezone: "Asia/Jakarta" }
+    body: { name: input.name, location: toText(input.location) ?? null, timezone: "Asia/Jakarta", productConfigs: input.productConfigs ?? [] }
   });
   invalidateCache("production-sites");
   return { id: manufacturingSite.id, name: manufacturingSite.name, location: toText(manufacturingSite.location) ?? "", timezone: manufacturingSite.timezone, lines: [] };

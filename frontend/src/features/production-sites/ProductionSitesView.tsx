@@ -21,9 +21,10 @@ import {
   type CreateProductionLineInput,
   type CreateProductionSiteInput
 } from "./api/production-sites.api";
-import { AddProductionLineDialog, AddProductionSiteDialog } from "./components/ProductionSiteDialogs";
+import { AddFishProductDialog, AddProductionLineDialog, AddProductionSiteDialog } from "./components/ProductionSiteDialogs";
 import { ProductionLinePanel } from "./components/ProductionLinePanel";
 import { ProductionLinesLedger } from "./components/ProductionLinesLedger";
+import { addSiteProductConfig } from "@/features/processing-config/api/processing-config.api";
 
 export function ProductionSitesView() {
   const { data: sites, error, isLoading, reload } = useAsyncData(() => listProductionSites(), []);
@@ -48,17 +49,23 @@ export function ProductionSitesView() {
     setSelectedLineId(line.id);
   }, reload);
 
+  const addFishProduct = useWriteAction(async (values: { species: string; productSpecification: string }) => {
+    if (!selectedSite) return;
+    await addSiteProductConfig(selectedSite.id, values);
+  });
+
   const addMachine = useWriteAction(async (values: CreateMachineInput) => {
     if (!selectedLine) return;
     await createMachine(selectedLine.id, values);
   }, reload);
 
-  const writeError = addSite.error ?? addLine.error ?? addMachine.error;
+  const writeError = addSite.error ?? addLine.error ?? addMachine.error ?? addFishProduct.error;
 
   function dismissWriteError() {
     addSite.dismissError();
     addLine.dismissError();
     addMachine.dismissError();
+    addFishProduct.dismissError();
   }
 
   return (
@@ -117,7 +124,7 @@ export function ProductionSitesView() {
                 <div className="col-span-8">
                   <div className="mb-4 flex items-end justify-between gap-5">
                     <SiteSummary site={selectedSite} />
-                    <AddProductionLineDialog onAddLine={addLine.run} processTags={processTags ?? []} />
+                    <div className="flex flex-wrap gap-3"><AddFishProductDialog onAdd={addFishProduct.run} /><AddProductionLineDialog onAddLine={addLine.run} processTags={processTags ?? []} /></div>
                   </div>
                   <ProductionLinesLedger
                     lines={selectedSite.lines}
