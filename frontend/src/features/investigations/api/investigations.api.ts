@@ -145,7 +145,7 @@ export async function listInvestigations(): Promise<InvestigationListItem[]> {
 
     // A batch with no saved analysis returns 404; that is a normal state, not an error.
     const analyses = await Promise.all(
-      batches.map(async (batch) => {
+      batches.filter((batch) => batch.hasSavedAnalysis).map(async (batch) => {
         const response = await apiRequest<{ analysis: SavedAnalysis } | undefined>(
           `/v1/production-batches/${batch.id}/analysis`,
           { resolveStatuses: [404, 422] }

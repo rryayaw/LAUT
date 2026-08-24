@@ -218,13 +218,23 @@ batchReportingRouter.get(
     const siteId = request.query.manufacturingSiteId === undefined ? undefined : parseId(request.query.manufacturingSiteId);
     if (siteId) await assertUserOwnsManufacturingSite(user.id, siteId);
     const rows = await requirePrisma().$queryRawUnsafe<BatchDatabaseRow[]>(
-      `select batch.id, batch.manufacturing_site_id, batch.status, batch.source_channel, batch.batch_reference,
-              batch.production_date, batch.species, batch.product_specification, batch.raw_input_kg,
-              batch.sellable_output_kg, batch.created_at, batch.updated_at,
-              count(link.production_line_id)::int as production_line_count
+      `select to_jsonb(batch) as batch,
+              coalesce(
+                jsonb_agg(
+                  jsonb_build_object('id', line.id, 'name', line.name, 'description', line.description, 'isActive', line.is_active)
+                  order by link.sequence nulls last, line.name
+                ) filter (where line.id is not null),
+                '[]'::jsonb
+              ) as production_lines,
+              exists (
+                select 1
+                from public.production_batch_analyses as analysis
+                where analysis.production_batch_id = batch.id
+              ) as has_analysis
        from public.production_batch as batch
        join public.manufacturing_sites as site on site.id = batch.manufacturing_site_id
        left join public.production_batch_lines as link on link.production_batch_id = batch.id
+       left join public.production_lines as line on line.id = link.production_line_id
        where site.owner_id = $1::uuid and ($2::uuid is null or batch.manufacturing_site_id = $2::uuid)
        group by batch.id
        order by batch.production_date desc, batch.created_at desc`,

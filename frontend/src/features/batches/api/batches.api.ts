@@ -1,9 +1,8 @@
 // Batch ledger access.
 //
-// Backed by `/v1/production-batches`. The list endpoint returns a summary that
-// omits the loss breakdown and the context fields every view groups on, so each
-// batch is also read in detail. That fan-out is cached and disappears the moment
-// the backend widens its list projection.
+// Backed by `/v1/production-batches`. The list endpoint provides each batch's
+// measured values and linked lines in one response, so pages never trigger a
+// request per batch when a test account has a large history.
 
 import type { Batch, BatchListItem, BatchSource, BatchStatus, ProductionSite } from "@/types/domain";
 import { ApiError, apiRequest, toDateOnly, toIsoTimestamp, toNumber, toRequiredNumber, toText } from "@/api/client";
@@ -11,12 +10,12 @@ import { cached, invalidateCache } from "@/api/cache";
 import { listProcessTags, listProductionSites } from "@/features/production-sites/api/production-sites.api";
 import { withAnalysis } from "../utils/batch-metrics";
 
-type SummaryRow = { id: string };
-
 type DetailRow = {
   batch: Record<string, unknown>;
   production_lines: Array<{ id: string; name: string; description: string | null; isActive: boolean }>;
 };
+
+type SummaryRow = DetailRow & { has_analysis: boolean };
 
 function toStatus(value: unknown): BatchStatus {
   // The backend persists `draft` and `confirmed` only; anything else it adds later
@@ -28,7 +27,7 @@ function toStatus(value: unknown): BatchStatus {
 
 function toSource(value: unknown): BatchSource {
   const text = toText(value);
-  return text === "whatsapp" || text === "iot" ? text : "web";
+  return text === "whatsapp" || text === "import" || text === "iot" ? text : "web";
 }
 
 /** "3 days ago" style label from a timestamp, for the ledger's reported column. */
@@ -79,19 +78,14 @@ function toBatch(row: DetailRow): Batch {
       spoilageKg: toNumber(batch.spoilage_kg),
       otherLossKg: toNumber(batch.other_loss_kg)
     },
-    // Nothing in the API marks a record as synthetic, so no record is shown as one.
-    isDemo: false
+    isDemo: false,
+    hasSavedAnalysis: "has_analysis" in row ? row.has_analysis === true : undefined
   };
-}
-
-async function fetchBatchDetail(batchId: string): Promise<Batch> {
-  const { productionBatch } = await apiRequest<{ productionBatch: DetailRow }>(`/v1/production-batches/${batchId}`);
-  return toBatch(productionBatch);
 }
 
 async function fetchAllBatches(): Promise<Batch[]> {
   const { productionBatches } = await apiRequest<{ productionBatches: SummaryRow[] }>("/v1/production-batches");
-  return Promise.all(productionBatches.map((row) => fetchBatchDetail(row.id)));
+  return productionBatches.map(toBatch);
 }
 
 /** Resolves site, line, and tag names the way a list endpoint eventually will. */

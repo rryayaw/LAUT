@@ -86,7 +86,7 @@ export type BatchStatus =
   | "closed"
   | "canceled";
 
-export type BatchSource = "web" | "whatsapp" | "iot";
+export type BatchSource = "web" | "whatsapp" | "import" | "iot";
 
 /** Raw reported weights. Every downstream metric is derived from these. */
 export type BatchQuantities = {
@@ -125,6 +125,8 @@ export type Batch = {
   quantities: BatchQuantities;
   /** Synthetic/demo records must stay visibly identified. */
   isDemo: boolean;
+  /** Whether the backend has already persisted an analysis for this batch. */
+  hasSavedAnalysis?: boolean;
   /** Original informal report, when the batch arrived over WhatsApp. */
   originalMessage?: string;
 };
