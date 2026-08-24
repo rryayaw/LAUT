@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { assessProductionEvidence, type AnalysisEvidence } from "../src/features/batch-analysis/production-analysis.graph.js";
+import { assessProductionEvidence, buildGroundedInvestigationChecks, type AnalysisEvidence } from "../src/features/batch-analysis/production-analysis.graph.js";
 
 function evidence(overrides: Partial<AnalysisEvidence> = {}): AnalysisEvidence {
   return {
     batchId: "batch",
+    siteName: "Test site",
     rawInputKg: 100,
     sellableOutputKg: 70,
     sellableYieldPercent: 70,
@@ -38,4 +39,12 @@ test("analysis refuses a baseline label without three comparables", () => {
 
   assert.equal(assessment.status, "insufficient_history");
   assert.equal(assessment.comparableAverageYieldPercent, null);
+});
+
+test("grounded checks cite measurements instead of an internal batch UUID", () => {
+  const sample = evidence({ batchContext: { ...evidence().batchContext, batchReference: "B-20260825-00001" } });
+  const checks = buildGroundedInvestigationChecks(sample, assessProductionEvidence(sample));
+  assert.equal(checks[0]?.id, "verify-yield-record");
+  assert.match(checks[0]?.rationale ?? "", /B-20260825-00001/);
+  assert.doesNotMatch(checks[0]?.rationale ?? "", /batchId/);
 });

@@ -26,13 +26,23 @@ type Guidance = {
   evidence: Array<{ fact: string; source: "batch" | "comparable_history" | "line_context" }>;
   investigationSteps: Array<{ priority: "low" | "medium" | "high"; action: string; rationale: string }>;
   limitations: string[];
+  suggestedChecks?: Array<{ id: string; priority: "low" | "medium" | "high"; action: string; rationale: string; basedOn: string[]; relatedLines: string[]; relatedTags: string[] }>;
 };
 
 type SavedAnalysis = {
   batchId: string;
   assessment: Assessment;
   guidance: Guidance | null;
-  evidence: { comparableCount: number; sellableYieldPercent: number };
+  evidence: {
+    comparableCount: number;
+    sellableYieldPercent: number;
+    rawInputKg: number;
+    sellableOutputKg: number;
+    massBalanceDifferenceKg: number;
+    siteName?: string;
+    batchContext: { batchReference: string | null; lossBreakdownKg: Record<string, number> };
+    productionLines: Array<{ name: string; sequence: number | null; capabilityTags: Array<{ label: string }> }>;
+  };
   aiStatus: "generated" | "not_required" | "not_configured";
   createdAt?: string;
 };
@@ -41,6 +51,10 @@ export type InvestigationListItem = Investigation & {
   batchCode: string;
   batchYieldPct?: number;
   batchBaselinePct?: number;
+  siteName: string;
+  productionLines: SavedAnalysis["evidence"]["productionLines"];
+  measurements: { rawInputKg: number; sellableOutputKg: number; massBalanceDifferenceKg: number; losses: Record<string, number> };
+  suggestedChecks: NonNullable<Guidance["suggestedChecks"]>;
 };
 
 /**
@@ -101,6 +115,9 @@ function toInvestigation(analysis: SavedAnalysis, batchCode: string, baselinePct
     batchCode,
     batchYieldPct: round(analysis.evidence.sellableYieldPercent),
     batchBaselinePct: baselinePct,
+    siteName: analysis.evidence.siteName ?? "Site context unavailable — re-run this analysis.",
+    productionLines: analysis.evidence.productionLines ?? [],
+    measurements: { rawInputKg: analysis.evidence.rawInputKg, sellableOutputKg: analysis.evidence.sellableOutputKg, massBalanceDifferenceKg: analysis.evidence.massBalanceDifferenceKg, losses: analysis.evidence.batchContext?.lossBreakdownKg ?? {} },
     title: titleFor(assessment),
     status: decision?.status ?? "suggested",
     confidence: confidenceFor(analysis.evidence.comparableCount),
@@ -109,11 +126,12 @@ function toInvestigation(analysis: SavedAnalysis, batchCode: string, baselinePct
     due: "No due date",
     createdAt: analysis.createdAt ?? "",
     summary: guidance?.summary ?? deterministicSummary(assessment),
-    possibleFactors: [...new Set(steps.map((step) => step.action))],
+    possibleFactors: [...new Set((guidance?.suggestedChecks ?? steps).map((step) => step.action))],
     recommendedCheck:
-      steps[0] === undefined
+      (guidance?.suggestedChecks ?? steps)[0] === undefined
         ? "Review the batch record against its comparable history before acting."
-        : `${steps[0].action} — ${steps[0].rationale}`,
+        : `${(guidance?.suggestedChecks ?? steps)[0].action} — ${(guidance?.suggestedChecks ?? steps)[0].rationale}`,
+    suggestedChecks: guidance?.suggestedChecks ?? steps.map((step, index) => ({ id: `legacy-${index}`, ...step, basedOn: [], relatedLines: [], relatedTags: [] })),
     // The deterministic assessment and the model's own caveats overlap, and saying
     // the same thing twice reads as two separate limitations.
     limitations: [
@@ -170,6 +188,11 @@ export async function listInvestigations(): Promise<InvestigationListItem[]> {
 export async function getInvestigation(investigationId: string): Promise<InvestigationListItem | undefined> {
   const investigations = await listInvestigations();
   return investigations.find((investigation) => investigation.id === investigationId);
+}
+
+export async function reanalyzeInvestigation(batchId: string): Promise<void> {
+  await apiRequest(`/v1/production-batches/${batchId}/analysis?refresh=true`, { method: "POST" });
+  invalidateCache("investigations");
 }
 
 export type InvestigationDecision = "approve" | "dismiss" | "start";

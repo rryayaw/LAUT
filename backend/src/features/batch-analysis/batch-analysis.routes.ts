@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { getAuthenticatedUser, requireAuthenticatedUser } from "../auth/auth.middleware.js";
-import { analyzeAndSaveBatch, BatchAnalysisError, getSavedBatchAnalysis } from "./batch-analysis.service.js";
+import { analyzeAndSaveBatch, BatchAnalysisError, getSavedBatchAnalysis, reanalyzeBatch } from "./batch-analysis.service.js";
 
 const idSchema = z.string().uuid();
 
@@ -36,6 +36,8 @@ batchAnalysisRouter.get("/v1/production-batches/:batchId/analysis", route(async 
 
 batchAnalysisRouter.post("/v1/production-batches/:batchId/analysis", route(async (request, response) => {
   const user = getAuthenticatedUser(response);
-  const analysis = await analyzeAndSaveBatch(user.id, batchId(request.params.batchId));
+  const analysis = request.query.refresh === "true"
+    ? await reanalyzeBatch(user.id, batchId(request.params.batchId))
+    : await analyzeAndSaveBatch(user.id, batchId(request.params.batchId));
   response.status(200).json({ analysis });
 }));

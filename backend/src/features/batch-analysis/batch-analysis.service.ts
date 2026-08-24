@@ -11,7 +11,7 @@ function dateValue(value: unknown) { return value instanceof Date ? value.toISOS
 
 async function ownedConfirmedBatch(userId: string, batchId: string): Promise<Row> {
   const rows = await database().$queryRawUnsafe<Row[]>(
-    `select batch.* from public.production_batch as batch
+    `select batch.*, site.name as site_name from public.production_batch as batch
      join public.manufacturing_sites as site on site.id = batch.manufacturing_site_id
      where batch.id = $1::uuid and batch.status = 'confirmed' and site.owner_id = $2::uuid limit 1`, batchId, userId);
   if (!rows[0]) throw new BatchAnalysisError(404, "Confirmed production batch was not found.");
@@ -54,7 +54,7 @@ export async function buildAnalysisEvidence(userId: string, batchId: string): Pr
   }).filter((value): value is NonNullable<typeof value> => value !== null);
   const comparableYields = comparableBatches.map((candidate) => candidate.sellableYieldPercent);
   return {
-    batchId, rawInputKg, sellableOutputKg, sellableYieldPercent: (sellableOutputKg / rawInputKg) * 100, knownLossPercent: (knownLossKg / rawInputKg) * 100, massBalanceDifferenceKg: rawInputKg - sellableOutputKg - knownLossKg,
+    batchId, siteName: textValue(batch.site_name) ?? "Unnamed production site", rawInputKg, sellableOutputKg, sellableYieldPercent: (sellableOutputKg / rawInputKg) * 100, knownLossPercent: (knownLossKg / rawInputKg) * 100, massBalanceDifferenceKg: rawInputKg - sellableOutputKg - knownLossKg,
     comparableYields, comparableCount: comparableYields.length, sharedContext: ["same manufacturing site", "same species", "same product specification", "shared production-line or capability context"],
     batchContext: { batchReference: textValue(batch.batch_reference), productionDate: dateValue(batch.production_date), species: textValue(batch.species), productSpecification: textValue(batch.product_specification), lossBreakdownKg, supplier: textValue(batch.supplier), shift: textValue(batch.shift), fishSizeCategory: textValue(batch.fish_size_category), storageState: textValue(batch.storage_state), receivingCondition: textValue(batch.receiving_condition), receivingTemperatureC: numberValue(batch.receiving_temperature_c), deliveryDelayMinutes: numberValue(batch.delivery_delay_minutes), productionDurationMinutes: numberValue(batch.production_duration_minutes), operatorNotes: textValue(batch.operator_notes) },
     productionLines: productionLines.map((line) => ({ name: textValue(line.name) ?? "Unnamed production line", description: textValue(line.description), sequence: numberValue(line.sequence), capabilityTags: Array.isArray(line.capability_tags) ? line.capability_tags.map((tag) => ({ label: textValue(tag?.label) ?? "Unnamed capability", description: textValue(tag?.description), otherContext: textValue(tag?.otherContext) })) : [] })),
@@ -88,6 +88,12 @@ export async function analyzeAndSaveBatch(userId: string, batchId: string): Prom
   return (await getSavedBatchAnalysis(userId, batchId)) ?? { batchId, evidence, ...analysis };
 }
 
+export async function reanalyzeBatch(userId: string, batchId: string): Promise<SavedBatchAnalysis> {
+  await ownedConfirmedBatch(userId, batchId);
+  await database().$executeRawUnsafe(`delete from public.production_batch_analyses where production_batch_id = $1::uuid`, batchId);
+  return analyzeAndSaveBatch(userId, batchId);
+}
+
 export function formatWhatsAppAnalysisSummary(analysis: SavedBatchAnalysis): string {
   const assessment = analysis.assessment;
   const status: Record<string, string> = {
@@ -99,6 +105,11 @@ export function formatWhatsAppAnalysisSummary(analysis: SavedBatchAnalysis): str
   const lines = [
     "*Analisis awal*",
     "",
+    `• Batch: ${analysis.evidence.batchContext.batchReference ?? "-"}`,
+    `• Lokasi: ${analysis.evidence.siteName}`,
+    `• Lini: ${analysis.evidence.productionLines.map((line) => line.name).join(", ") || "-"}`,
+    `• Tag proses: ${[...new Set(analysis.evidence.productionLines.flatMap((line) => line.capabilityTags.map((tag) => tag.label)))].join(", ") || "-"}`,
+    `• Input / hasil jual: ${analysis.evidence.rawInputKg} kg / ${analysis.evidence.sellableOutputKg} kg`,
     `• Yield: ${analysis.evidence?.sellableYieldPercent?.toFixed?.(2) ?? "-"}%`,
     `• Batch pembanding: ${analysis.evidence?.comparableCount ?? "-"}`,
     `• Status: ${status[assessment.status] ?? assessment.status}`
@@ -110,6 +121,11 @@ export function formatWhatsAppAnalysisSummary(analysis: SavedBatchAnalysis): str
     lines.push(`• Selisih: ${assessment.yieldDifferencePercentagePoints.toFixed(2)} poin`);
   }
   if (analysis.guidance?.summary) lines.push("", analysis.guidance.summary);
+  const checks = analysis.guidance?.suggestedChecks ?? [];
+  if (checks.length > 0) {
+    lines.push("", "*Pengecekan yang disarankan*");
+    for (const check of checks.slice(0, 2)) lines.push(`• ${check.action}${check.relatedLines.length ? ` (${check.relatedLines.join(", ")})` : ""}`);
+  }
   lines.push("", "_Ini perbandingan data, bukan bukti sebab-akibat._");
   return lines.join("\n");
 }

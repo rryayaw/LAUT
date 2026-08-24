@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Check, FileText, Repeat, X } from "lucide-react";
+import { BarChart3, Check, FileText, GitBranch, MapPin, RefreshCw, Repeat, Scale, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -17,9 +17,10 @@ const evidenceMeta: Record<EvidenceKind, { icon: LucideIcon; label: string }> = 
 type InvestigationDetailProps = {
   investigation: InvestigationListItem;
   onDecide: (investigationId: string, decision: InvestigationDecision) => void;
+  onRefresh: (batchId: string) => void;
 };
 
-export function InvestigationDetail({ investigation, onDecide }: Readonly<InvestigationDetailProps>) {
+export function InvestigationDetail({ investigation, onDecide, onRefresh }: Readonly<InvestigationDetailProps>) {
   const isOpen = investigation.status === "suggested" || investigation.status === "approved";
 
   return (
@@ -42,6 +43,11 @@ export function InvestigationDetail({ investigation, onDecide }: Readonly<Invest
         <section aria-labelledby="summary-title" className="border-b border-[var(--line)] px-5 py-4">
           <h3 className="text-xs font-medium text-[var(--muted)]" id="summary-title">Summary</h3>
           <p className="mt-2 text-sm leading-6 text-[var(--ink)]">{investigation.summary}</p>
+        </section>
+
+        <section aria-labelledby="batch-context-title" className="border-b border-[var(--line)] px-5 py-4">
+          <div className="flex items-center justify-between gap-3"><h3 className="text-xs font-medium text-[var(--muted)]" id="batch-context-title">Batch context</h3><Button className="h-auto rounded-none px-2 py-1 text-xs" onClick={() => onRefresh(investigation.batchId)} type="button" variant="outline"><RefreshCw aria-hidden="true" size={13} /> Re-run analysis</Button></div>
+          <div className="mt-3 space-y-3 text-xs"><p className="flex items-center gap-2 text-[var(--ink)]"><MapPin aria-hidden="true" className="text-[var(--brand)]" size={14} />{investigation.siteName}</p><div><p className="flex items-center gap-2 font-medium text-[var(--ink)]"><GitBranch aria-hidden="true" className="text-[var(--brand)]" size={14} />Lines used</p><div className="mt-2 space-y-1.5">{investigation.productionLines.length ? investigation.productionLines.map((line) => <p key={`${line.sequence}-${line.name}`} className="text-[var(--muted)]">{line.sequence ? `${line.sequence}. ` : ""}{line.name}{line.capabilityTags.length ? ` · ${line.capabilityTags.map((tag) => tag.label).join(", ")}` : ""}</p>) : <p className="text-[var(--muted)]">No saved line context — re-run this analysis.</p>}</div></div><div className="grid grid-cols-3 gap-2 border-y border-[var(--line)] py-2 font-mono text-[11px]"><span><Scale aria-hidden="true" className="mr-1 inline text-[var(--brand)]" size={12} />In {investigation.measurements.rawInputKg} kg</span><span>Out {investigation.measurements.sellableOutputKg} kg</span><span>Balance {investigation.measurements.massBalanceDifferenceKg} kg</span></div></div>
         </section>
 
         <section aria-labelledby="evidence-title" className="border-b border-[var(--line)] px-5 py-4">
@@ -69,16 +75,9 @@ export function InvestigationDetail({ investigation, onDecide }: Readonly<Invest
           </div>
         </section>
 
-        <section aria-labelledby="factors-title" className="border-b border-[var(--line)] px-5 py-4">
-          <h3 className="text-xs font-medium text-[var(--muted)]" id="factors-title">Possible contributing factors</h3>
-          <ul className="mt-2 space-y-1.5">
-            {investigation.possibleFactors.map((factor, index) => (
-              <li className="flex gap-2 text-sm leading-6 text-[var(--ink)]" key={index}>
-                <span aria-hidden="true" className="mt-2.5 h-1 w-1 shrink-0 bg-[var(--brand)]" />
-                {factor}
-              </li>
-            ))}
-          </ul>
+        <section aria-labelledby="checks-title" className="border-b border-[var(--line)] px-5 py-4">
+          <h3 className="text-xs font-medium text-[var(--muted)]" id="checks-title">Suggested checks</h3>
+          <div className="mt-3 space-y-3">{investigation.suggestedChecks.map((check) => <article className="border border-[var(--line)] p-3" key={check.id}><div className="flex items-start justify-between gap-3"><p className="text-sm font-medium leading-5 text-[var(--ink)]">{check.action}</p><Badge tone={check.priority === "high" ? "risk" : "soft"}>{check.priority}</Badge></div><p className="mt-1 text-xs leading-5 text-[var(--muted)]">{check.rationale}</p>{check.relatedLines.length || check.relatedTags.length ? <p className="mt-2 text-[11px] text-[var(--brand-strong)]">{[...check.relatedLines, ...check.relatedTags].join(" · ")}</p> : null}{check.basedOn.length ? <p className="mt-2 text-[11px] leading-4 text-[var(--muted)]">Based on: {check.basedOn.join("; ")}</p> : null}</article>)}</div>
         </section>
 
         <section aria-labelledby="recommendation-title" className="border-b border-[var(--line)] bg-[var(--brand-soft)] px-5 py-4">

@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/app/PageHeader";
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { useWriteAction } from "@/hooks/useWriteAction";
 import { WriteErrorBanner } from "@/components/app/WriteErrorBanner";
-import { decideInvestigation, listInvestigations, type InvestigationDecision } from "./api/investigations.api";
+import { decideInvestigation, listInvestigations, reanalyzeInvestigation, type InvestigationDecision } from "./api/investigations.api";
 import { InvestigationDetail } from "./components/InvestigationDetail";
 import { InvestigationList } from "./components/InvestigationList";
 
@@ -23,6 +23,7 @@ export function InvestigationsView() {
     },
     reload
   );
+  const refresh = useWriteAction(async (batchId: string) => { await reanalyzeInvestigation(batchId); }, reload);
 
   return (
     <OperationsShell>
@@ -34,7 +35,7 @@ export function InvestigationsView() {
           title="Investigations"
         />
 
-        <WriteErrorBanner error={decide.error} onDismiss={decide.dismissError} />
+        <WriteErrorBanner error={decide.error ?? refresh.error} onDismiss={() => { decide.dismissError(); refresh.dismissError(); }} />
 
         <div className="mt-6">
           <AsyncBoundary
@@ -53,7 +54,7 @@ export function InvestigationsView() {
                 />
               </div>
               <div className="col-span-5">
-                {selected ? <InvestigationDetail investigation={selected} onDecide={decide.run} /> : null}
+                {selected ? <InvestigationDetail investigation={selected} onDecide={decide.run} onRefresh={refresh.run} /> : null}
               </div>
             </div>
           </AsyncBoundary>
