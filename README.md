@@ -128,6 +128,27 @@ optional and requires GOOGLE_API_KEY. If the Phase 6 migration has not yet
 been applied, the batch still confirms but its WhatsApp analysis will be shown
 as unavailable.
 
+## Import the synthetic red snapper dataset
+
+The supplied workbook is available as a reproducible test fixture. Its 360
+mass-balanced records import into a separate **Synthetic Red Snapper Test Site**
+owned by the specified test user. Imported batches are confirmed, marked with
+`source_channel = import`, and use `SYNTHETIC-RED-SNAPPER:` batch references.
+The command is idempotent: re-running it skips batch references already
+present in that test site.
+
+First apply the `add_import_source_channel` migration in
+`supabase/migrations/`, then run:
+
+```powershell
+cd backend
+npm run import:synthetic-red-snapper -- --email test@test.com
+```
+
+Use only a dedicated test account. The importer retains production and
+mass-balance values, but deliberately does not import the workbook's injected
+anomaly labels or notes as operational facts.
+
 ## Tests
 
 Run the deterministic suite from the backend directory:

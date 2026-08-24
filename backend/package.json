@@ -10,6 +10,7 @@
     "typecheck": "npm run prisma:generate && tsc --noEmit",
     "test": "tsx --test test/index.test.ts",
     "test:hosted": "set RUN_HOSTED_INTEGRATION_TESTS=true&& tsx --test test/hosted-analysis.integration.test.ts",
+    "import:synthetic-red-snapper": "tsx src/scripts/import-synthetic-red-snapper.ts",
     "prisma:generate": "prisma generate"
   },
   "dependencies": {
