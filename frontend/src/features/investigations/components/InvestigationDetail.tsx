@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Check, FileText, GitBranch, MapPin, RefreshCw, Repeat, Scale, X } from "lucide-react";
+import { BarChart3, Check, FileText, GitBranch, LoaderCircle, MapPin, RefreshCw, Repeat, Scale, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,11 +16,13 @@ const evidenceMeta: Record<EvidenceKind, { icon: LucideIcon; label: string }> = 
 
 type InvestigationDetailProps = {
   investigation: InvestigationListItem;
-  onDecide: (investigationId: string, decision: InvestigationDecision) => void;
-  onRefresh: (batchId: string) => void;
+  onDecide: (investigationId: string, decision: InvestigationDecision) => Promise<void>;
+  onRefresh: (batchId: string) => Promise<void>;
+  isDeciding: boolean;
+  isRefreshing: boolean;
 };
 
-export function InvestigationDetail({ investigation, onDecide, onRefresh }: Readonly<InvestigationDetailProps>) {
+export function InvestigationDetail({ investigation, isDeciding, isRefreshing, onDecide, onRefresh }: Readonly<InvestigationDetailProps>) {
   const isOpen = investigation.status === "suggested" || investigation.status === "approved";
 
   return (
@@ -46,7 +48,7 @@ export function InvestigationDetail({ investigation, onDecide, onRefresh }: Read
         </section>
 
         <section aria-labelledby="batch-context-title" className="border-b border-[var(--line)] px-5 py-4">
-          <div className="flex items-center justify-between gap-3"><h3 className="text-xs font-medium text-[var(--muted)]" id="batch-context-title">Batch context</h3><Button className="h-auto rounded-none px-2 py-1 text-xs" onClick={() => onRefresh(investigation.batchId)} type="button" variant="outline"><RefreshCw aria-hidden="true" size={13} /> Re-run analysis</Button></div>
+          <div className="flex items-center justify-between gap-3"><h3 className="text-xs font-medium text-[var(--muted)]" id="batch-context-title">Batch context</h3><Button className="h-auto rounded-none px-2 py-1 text-xs" disabled={isRefreshing} onClick={() => void onRefresh(investigation.batchId)} type="button" variant="outline">{isRefreshing ? <><LoaderCircle aria-hidden="true" className="animate-spin" size={13} /> Re-running…</> : <><RefreshCw aria-hidden="true" size={13} /> Re-run analysis</>}</Button></div>
           <div className="mt-3 space-y-3 text-xs"><p className="flex items-center gap-2 text-[var(--ink)]"><MapPin aria-hidden="true" className="text-[var(--brand)]" size={14} />{investigation.siteName}</p><div><p className="flex items-center gap-2 font-medium text-[var(--ink)]"><GitBranch aria-hidden="true" className="text-[var(--brand)]" size={14} />Lines used</p><div className="mt-2 space-y-1.5">{investigation.productionLines.length ? investigation.productionLines.map((line) => <p key={`${line.sequence}-${line.name}`} className="text-[var(--muted)]">{line.sequence ? `${line.sequence}. ` : ""}{line.name}{line.capabilityTags.length ? ` · ${line.capabilityTags.map((tag) => tag.label).join(", ")}` : ""}</p>) : <p className="text-[var(--muted)]">No saved line context — re-run this analysis.</p>}</div></div><div className="grid grid-cols-3 gap-2 border-y border-[var(--line)] py-2 font-mono text-[11px]"><span><Scale aria-hidden="true" className="mr-1 inline text-[var(--brand)]" size={12} />In {investigation.measurements.rawInputKg} kg</span><span>Out {investigation.measurements.sellableOutputKg} kg</span><span>Balance {investigation.measurements.massBalanceDifferenceKg} kg</span></div></div>
         </section>
 
@@ -109,29 +111,30 @@ export function InvestigationDetail({ investigation, onDecide, onRefresh }: Read
               <>
                 <Button
                   className="h-auto flex-1 rounded-none bg-[var(--brand)] px-3 py-2 text-xs text-white shadow-none hover:bg-[var(--brand-strong)]"
-                  onClick={() => onDecide(investigation.id, "approve")}
+                  disabled={isDeciding}
+                  onClick={() => void onDecide(investigation.id, "approve")}
                   type="button"
                 >
-                  <Check aria-hidden="true" size={14} strokeWidth={1.75} />
-                  Approve
+                  {isDeciding ? <><LoaderCircle aria-hidden="true" className="animate-spin" size={14} /> Saving…</> : <><Check aria-hidden="true" size={14} strokeWidth={1.75} /> Approve</>}
                 </Button>
                 <Button
                   className="h-auto flex-1 rounded-none border-[var(--line-strong)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--muted)] shadow-none hover:bg-[var(--surface-pressed)] hover:text-[var(--ink)]"
-                  onClick={() => onDecide(investigation.id, "dismiss")}
+                  disabled={isDeciding}
+                  onClick={() => void onDecide(investigation.id, "dismiss")}
                   type="button"
                   variant="outline"
                 >
-                  <X aria-hidden="true" size={14} strokeWidth={1.75} />
-                  Dismiss
+                  {isDeciding ? <><LoaderCircle aria-hidden="true" className="animate-spin" size={14} /> Saving…</> : <><X aria-hidden="true" size={14} strokeWidth={1.75} /> Dismiss</>}
                 </Button>
               </>
             ) : (
               <Button
                 className="h-auto w-full rounded-none bg-[var(--brand)] px-3 py-2 text-xs text-white shadow-none hover:bg-[var(--brand-strong)]"
-                onClick={() => onDecide(investigation.id, "start")}
+                disabled={isDeciding}
+                onClick={() => void onDecide(investigation.id, "start")}
                 type="button"
               >
-                Mark as in progress
+                {isDeciding ? <><LoaderCircle aria-hidden="true" className="animate-spin" size={14} /> Saving…</> : "Mark as in progress"}
               </Button>
             )}
           </div>

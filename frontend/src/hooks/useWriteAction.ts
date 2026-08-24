@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 
 export type WriteAction<TArgs extends unknown[]> = {
-  run: (...args: TArgs) => void;
+  run: (...args: TArgs) => Promise<void>;
   error: Error | undefined;
   isPending: boolean;
   dismissError: () => void;
@@ -24,14 +24,17 @@ export function useWriteAction<TArgs extends unknown[]>(
   const [isPending, setIsPending] = useState(false);
 
   const run = useCallback(
-    (...args: TArgs) => {
+    async (...args: TArgs) => {
       setIsPending(true);
       setError(undefined);
-
-      action(...args)
-        .then(() => onSuccess?.())
-        .catch((cause: unknown) => setError(cause instanceof Error ? cause : new Error(String(cause))))
-        .finally(() => setIsPending(false));
+      try {
+        await action(...args);
+        onSuccess?.();
+      } catch (cause: unknown) {
+        setError(cause instanceof Error ? cause : new Error(String(cause)));
+      } finally {
+        setIsPending(false);
+      }
     },
     // The action closes over view state and is redefined per render; the caller
     // controls when a rerun is meaningful.

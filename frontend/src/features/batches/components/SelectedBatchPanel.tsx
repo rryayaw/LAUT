@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Check, GitBranch, MessageCircle, Tags, TriangleAlert } from "lucide-react";
+import { Building2, Check, GitBranch, LoaderCircle, MessageCircle, Tags, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { BatchListItem, BatchQuantities } from "@/types/domain";
@@ -9,8 +9,10 @@ import { EditQuantitiesDialog } from "./EditQuantitiesDialog";
 
 type SelectedBatchPanelProps = {
   batch: BatchListItem;
-  onConfirm: (batchId: string) => void;
-  onUpdateQuantities: (batchId: string, quantities: Partial<BatchQuantities>) => void;
+  onConfirm: (batchId: string) => Promise<void>;
+  onUpdateQuantities: (batchId: string, quantities: Partial<BatchQuantities>) => Promise<void>;
+  isConfirming: boolean;
+  isSavingQuantities: boolean;
 };
 
 type BalanceRow = { label: string; kg: number; pct: number; tone: string };
@@ -44,7 +46,7 @@ function buildBalanceRows(batch: BatchListItem): BalanceRow[] {
   return rows;
 }
 
-export function SelectedBatchPanel({ batch, onConfirm, onUpdateQuantities }: Readonly<SelectedBatchPanelProps>) {
+export function SelectedBatchPanel({ batch, isConfirming, isSavingQuantities, onConfirm, onUpdateQuantities }: Readonly<SelectedBatchPanelProps>) {
   const { analysis } = batch;
   const { metrics, baseline, anomaly } = analysis;
   const rows = buildBalanceRows(batch);
@@ -183,14 +185,14 @@ export function SelectedBatchPanel({ batch, onConfirm, onUpdateQuantities }: Rea
 
         {!isTrusted ? (
           <div className="mt-4 space-y-2 border-t border-[var(--line)] pt-4">
-            <EditQuantitiesDialog batch={batch} onSave={onUpdateQuantities} />
+            <EditQuantitiesDialog batch={batch} isSaving={isSavingQuantities} onSave={onUpdateQuantities} />
             <Button
               className="h-auto w-full rounded-none bg-[var(--brand)] px-3 py-2 text-white shadow-none hover:bg-[var(--brand-strong)]"
-              onClick={() => onConfirm(batch.id)}
+              disabled={isConfirming}
+              onClick={() => void onConfirm(batch.id)}
               type="button"
             >
-              <Check aria-hidden="true" size={15} strokeWidth={1.75} />
-              Confirm as trusted record
+              {isConfirming ? <><LoaderCircle aria-hidden="true" className="animate-spin" size={15} /> Confirming…</> : <><Check aria-hidden="true" size={15} strokeWidth={1.75} /> Confirm as trusted record</>}
             </Button>
             <p className="mt-2 text-[11px] leading-4 text-[var(--muted)]">
               Only confirmed batches enter comparable history.

@@ -82,6 +82,7 @@ export function BatchesView() {
           actions={
             <BatchEntryDialog
               onCreateBatch={create.run}
+              isSaving={create.isPending}
               productConfigs={productConfigs ?? []}
               sites={sites ?? []}
             />
@@ -137,7 +138,7 @@ export function BatchesView() {
                 />
               </div>
               <div className="col-span-4">
-                {selectedBatch ? <SelectedBatchPanel batch={selectedBatch} onConfirm={confirm.run} onUpdateQuantities={update.run} /> : null}
+                {selectedBatch ? <SelectedBatchPanel batch={selectedBatch} isConfirming={confirm.isPending} isSavingQuantities={update.isPending} onConfirm={confirm.run} onUpdateQuantities={update.run} /> : null}
               </div>
             </div>
           </AsyncBoundary>

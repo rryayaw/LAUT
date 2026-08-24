@@ -8,7 +8,7 @@
 // checked before it is saved rather than after it is rejected.
 
 import { useMemo, useState, type FormEvent } from "react";
-import { PencilLine } from "lucide-react";
+import { LoaderCircle, PencilLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,7 +25,8 @@ import type { BatchListItem, BatchQuantities } from "@/types/domain";
 
 type EditQuantitiesDialogProps = {
   batch: BatchListItem;
-  onSave: (batchId: string, quantities: Partial<BatchQuantities>) => void;
+  onSave: (batchId: string, quantities: Partial<BatchQuantities>) => Promise<void>;
+  isSaving: boolean;
 };
 
 const inputClass =
@@ -59,7 +60,7 @@ function parse(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-export function EditQuantitiesDialog({ batch, onSave }: Readonly<EditQuantitiesDialogProps>) {
+export function EditQuantitiesDialog({ batch, isSaving, onSave }: Readonly<EditQuantitiesDialogProps>) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => toDraft(batch.quantities));
 
@@ -80,7 +81,7 @@ export function EditQuantitiesDialog({ batch, onSave }: Readonly<EditQuantitiesD
     };
   }, [draft]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     // Only fields the operator actually filled are sent; an empty box stays
@@ -88,7 +89,7 @@ export function EditQuantitiesDialog({ batch, onSave }: Readonly<EditQuantitiesD
     const quantities: Partial<BatchQuantities> = { rawInputKg: parse(draft.rawInputKg) };
     for (const field of LOSS_FIELDS) quantities[field.key] = parse(draft[field.key]);
 
-    onSave(batch.id, quantities);
+    await onSave(batch.id, quantities);
     setOpen(false);
   }
 
@@ -170,9 +171,10 @@ export function EditQuantitiesDialog({ batch, onSave }: Readonly<EditQuantitiesD
             </span>
             <Button
               className="h-auto rounded-none bg-[var(--brand)] px-4 py-2 text-white shadow-none hover:bg-[var(--brand-strong)]"
+              disabled={isSaving}
               type="submit"
             >
-              Save changes
+              {isSaving ? <><LoaderCircle aria-hidden="true" className="animate-spin" size={15} /> Saving…</> : "Save changes"}
             </Button>
           </DialogFooter>
         </form>

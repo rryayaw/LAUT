@@ -54,7 +54,7 @@ export function InvestigationsView() {
                 />
               </div>
               <div className="col-span-5">
-                {selected ? <InvestigationDetail investigation={selected} onDecide={decide.run} onRefresh={refresh.run} /> : null}
+                {selected ? <InvestigationDetail investigation={selected} isDeciding={decide.isPending} isRefreshing={refresh.isPending} onDecide={decide.run} onRefresh={refresh.run} /> : null}
               </div>
             </div>
           </AsyncBoundary>
