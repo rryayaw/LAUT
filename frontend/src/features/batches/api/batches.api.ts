@@ -189,6 +189,40 @@ export type CreateBatchInput = {
   otherLossKg?: number;
 };
 
+export type BatchTextExtraction = {
+  language: "id" | "en" | "unknown";
+  tone: "casual" | "neutral" | "formal" | "unknown";
+  fields: {
+    manufacturingSiteName?: string;
+    productionLineNames?: string[];
+    species?: string;
+    productSpecification?: string;
+    rawInputKg?: number;
+    sellableOutputKg?: number;
+    trimmingKg?: number;
+    qualityRejectKg?: number;
+    byproductKg?: number;
+    spoilageKg?: number;
+    otherLossKg?: number;
+    shift?: string;
+    supplier?: string;
+    fishSizeCategory?: string;
+    deliveryDelayMinutes?: number;
+    receivingCondition?: string;
+    operatorNotes?: string;
+  };
+  ambiguities: string[];
+};
+
+/** Extracts only facts explicitly stated in an informal batch description. */
+export async function extractBatchText(message: string): Promise<BatchTextExtraction> {
+  const { extraction } = await apiRequest<{ extraction: BatchTextExtraction }>("/v1/production-batches/extract", {
+    method: "POST",
+    body: { message }
+  });
+  return extraction;
+}
+
 /**
  * Creates a record that is explicitly NOT trusted history yet. The backend enters
  * it as a draft and only a human confirmation moves it forward (mastersheet

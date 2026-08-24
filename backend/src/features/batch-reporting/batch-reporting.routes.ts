@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../../db/prisma.js";
 import { getAuthenticatedUser, requireAuthenticatedUser } from "../auth/auth.middleware.js";
 import { assertUserOwnsManufacturingSite } from "../processing-config/site-access.service.js";
+import { extractWebBatchCandidates } from "../whatsapp/batch-extraction.service.js";
 
 export type BatchDatabaseRow = Record<string, unknown>;
 
@@ -47,6 +48,7 @@ const createBatchSchema = batchFieldsSchema.extend({
   productionLineIds: productionLineIdsSchema,
   sourceChannel: z.enum(["web", "whatsapp"]).default("web")
 });
+const extractBatchSchema = z.object({ message: z.string().trim().min(1).max(4_000) });
 const updateBatchSchema = batchFieldsSchema.extend({ productionLineIds: productionLineIdsSchema.optional() });
 
 class ApiError extends Error {
@@ -285,6 +287,17 @@ batchReportingRouter.post(
       return created.id;
     });
     response.status(201).json({ productionBatch: await getBatchDetail(batch) });
+  })
+);
+
+batchReportingRouter.post(
+  "/v1/production-batches/extract",
+  route(async (request, response) => {
+    const user = getAuthenticatedUser(response);
+    const { message } = parseOrThrow(extractBatchSchema, request.body);
+    const extraction = await extractWebBatchCandidates(user.id, message);
+    if (!extraction) throw new ApiError(503, "Batch extraction is unavailable. Enter the batch manually instead.");
+    response.status(200).json({ extraction });
   })
 );
 
