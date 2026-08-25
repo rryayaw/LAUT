@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { MessageCircle, Phone } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -58,6 +59,7 @@ export function WhatsAppNumberPrompt() {
 }
 
 function WhatsAppNumberDialog({ onLinked, onOpenChange, open }: Readonly<{ onLinked: () => void; onOpenChange: (open: boolean) => void; open: boolean }>) {
+  const router = useRouter();
   const [phoneNumber, setPhoneNumber] = useState("");
   const [error, setError] = useState<string>();
   const [isSaving, setIsSaving] = useState(false);
@@ -71,6 +73,7 @@ function WhatsAppNumberDialog({ onLinked, onOpenChange, open }: Readonly<{ onLin
       window.dispatchEvent(new Event(WHATSAPP_IDENTITY_UPDATED_EVENT));
       onLinked();
       onOpenChange(false);
+      router.push("/configuration");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to add that WhatsApp number. Please try again.");
     } finally {

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Image from "next/image";
+import { Check, Copy, ExternalLink, MessageCircle, QrCode } from "lucide-react";
 import { AsyncBoundary } from "@/components/app/AsyncBoundary";
 import { OperationsShell } from "@/components/app/OperationsShell";
 import { PageHeader } from "@/components/app/PageHeader";
@@ -11,6 +13,11 @@ import { WHATSAPP_IDENTITY_UPDATED_EVENT } from "@/components/app/WhatsAppNumber
 import { useAsyncData } from "@/hooks/useAsyncData";
 import { getWhatsAppIdentity, linkWhatsAppIdentity } from "@/features/whatsapp/api/whatsapp.api";
 import { listLossCategories, listProcessTags, listProductConfigs } from "./api/processing-config.api";
+import botCode from "@/assets/Bot code.png";
+
+const WHATSAPP_BOT_NUMBER = "+14157386102";
+const WHATSAPP_BOT_PASSPHRASE = "Join petty cozy";
+const WHATSAPP_BOT_LINK = "https://web.whatsapp.com/send?phone=14157386102&text=Join%20petty%20cozy";
 
 export function ProcessingConfigView() {
   const { data: configs, error, isLoading } = useAsyncData(() => listProductConfigs(), []);
@@ -20,6 +27,7 @@ export function ProcessingConfigView() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [saveError, setSaveError] = useState<string>();
   const [isSavingWhatsApp, setIsSavingWhatsApp] = useState(false);
+  const [copied, setCopied] = useState<"number" | "message" | null>(null);
 
   useEffect(() => {
     setPhoneNumber(whatsappIdentity?.phoneNumber ?? "");
@@ -38,6 +46,12 @@ export function ProcessingConfigView() {
     } finally {
       setIsSavingWhatsApp(false);
     }
+  }
+
+  async function copyBotDetails(value: string, item: "number" | "message") {
+    await navigator.clipboard.writeText(value);
+    setCopied(item);
+    window.setTimeout(() => setCopied((current) => current === item ? null : current), 2000);
   }
 
   return (
@@ -77,6 +91,53 @@ export function ProcessingConfigView() {
                 {isSavingWhatsApp ? "Saving…" : whatsappIdentity ? "Change number" : "Add number"}
               </Button>
             </form>
+            <div className="border-t border-[var(--line)] px-5 py-5">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[var(--ink)]">
+                <MessageCircle aria-hidden="true" className="text-[var(--brand)]" size={18} strokeWidth={1.75} />
+                Connect to the LAUT WhatsApp bot
+              </div>
+              <p className="mt-1 text-sm leading-6 text-[var(--muted)]">Choose any one of these methods, then send the passphrase to start chatting with the batch assistant.</p>
+              <div className="mt-4 grid gap-4 lg:grid-cols-3">
+                <article className="border border-[var(--line)] bg-[var(--surface-subtle)] p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-[var(--ink)]">
+                    <QrCode aria-hidden="true" size={17} strokeWidth={1.75} />
+                    1. Scan the QR code
+                  </div>
+                  <Image alt="QR code to open the LAUT WhatsApp bot" className="mx-auto mt-3 h-36 w-36 border border-[var(--line)] bg-white p-2" height={144} priority src={botCode} width={144} />
+                  <p className="mt-3 text-xs leading-5 text-[var(--muted)]">Open WhatsApp on your phone and scan this code.</p>
+                </article>
+                <article className="border border-[var(--line)] bg-[var(--surface-subtle)] p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-[var(--ink)]">
+                    <ExternalLink aria-hidden="true" size={17} strokeWidth={1.75} />
+                    2. Open WhatsApp
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-[var(--muted)]">Open a pre-filled chat with the bot from this device.</p>
+                  <Button asChild className="mt-5 h-10 rounded-none bg-[var(--brand)] text-white hover:bg-[var(--brand-strong)]">
+                    <a href={WHATSAPP_BOT_LINK} rel="noreferrer" target="_blank">Open WhatsApp <ExternalLink aria-hidden="true" size={15} /></a>
+                  </Button>
+                </article>
+                <article className="border border-[var(--line)] bg-[var(--surface-subtle)] p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-[var(--ink)]">
+                    <MessageCircle aria-hidden="true" size={17} strokeWidth={1.75} />
+                    3. Message the bot
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-[var(--muted)]">Send a WhatsApp message to</p>
+                  <div className="mt-1 flex items-center justify-between gap-2 font-mono text-sm font-semibold text-[var(--ink)]">
+                    {WHATSAPP_BOT_NUMBER}
+                    <Button aria-label="Copy WhatsApp bot number" className="h-8 w-8 rounded-none" onClick={() => void copyBotDetails(WHATSAPP_BOT_NUMBER, "number")} type="button" variant="outline">
+                      {copied === "number" ? <Check aria-hidden="true" size={15} /> : <Copy aria-hidden="true" size={15} />}
+                    </Button>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-[var(--muted)]">with the passphrase</p>
+                  <div className="mt-1 flex items-center justify-between gap-2 font-mono text-sm font-semibold text-[var(--ink)]">
+                    {WHATSAPP_BOT_PASSPHRASE}
+                    <Button aria-label="Copy WhatsApp bot passphrase" className="h-8 w-8 rounded-none" onClick={() => void copyBotDetails(WHATSAPP_BOT_PASSPHRASE, "message")} type="button" variant="outline">
+                      {copied === "message" ? <Check aria-hidden="true" size={15} /> : <Copy aria-hidden="true" size={15} />}
+                    </Button>
+                  </div>
+                </article>
+              </div>
+            </div>
             {whatsappError ? <p className="border-t border-[var(--line)] px-5 py-3 text-sm text-[var(--risk)]" role="alert">Unable to load the WhatsApp setting. Refresh and try again.</p> : null}
             {saveError ? <p aria-live="polite" className="border-t border-[var(--line)] px-5 py-3 text-sm text-[var(--risk)]" role="alert">{saveError}</p> : null}
             <p className="border-t border-[var(--line)] px-5 py-3 text-[11px] leading-4 text-[var(--muted)]">Include your country code. In the production setup, changing this number should be confirmed through a WhatsApp ownership check.</p>
