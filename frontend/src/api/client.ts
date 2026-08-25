@@ -56,7 +56,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     });
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === "AbortError") throw cause;
-    throw new ApiError(`Cannot reach the LAUT API at ${baseUrl}. Is the backend running?`, 0, cause);
+    throw new ApiError("We’re having trouble connecting right now. Please refresh the page and try again.", 0, cause);
   }
 
   if (!response.ok) {

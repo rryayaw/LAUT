@@ -56,3 +56,23 @@ export async function listWhatsAppMessages(conversationId: string): Promise<What
     createdAt: toIsoTimestamp(message.createdAt) ?? message.createdAt
   }));
 }
+
+export async function startWhatsAppConversation(restart = false): Promise<WhatsAppConversation> {
+  const { conversation } = await apiRequest<{ conversation: ConversationRow }>("/v1/whatsapp/conversations", {
+    method: "POST",
+    body: { restart }
+  });
+  return {
+    ...conversation,
+    language: toText(conversation.language),
+    lastMessageAt: toIsoTimestamp(conversation.lastMessageAt) ?? conversation.lastMessageAt
+  };
+}
+
+/** Sends into the same deterministic batch wizard as an inbound WhatsApp message. */
+export async function sendWhatsAppConversationMessage(conversationId: string, text: string): Promise<void> {
+  await apiRequest(`/v1/whatsapp/conversations/${conversationId}/messages`, {
+    method: "POST",
+    body: { text }
+  });
+}

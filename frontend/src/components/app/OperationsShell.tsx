@@ -100,7 +100,7 @@ function OperationsSidebar() {
   const primaryNavigation: NavigationItem[] = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
     { href: "/batches", icon: ClipboardCheck, label: "Batches" },
-    { href: "/whatsapp", icon: MessageCircle, label: "WhatsApp" },
+    { href: "/assistant", icon: MessageCircle, label: "Batch assistant" },
     { href: "/analysis", icon: BarChart3, label: "Analysis" },
     { href: "/investigations", icon: ScanLine, label: "Investigations", badge: openInvestigations },
     { href: "/production-sites", icon: Building2, label: "Production sites" }

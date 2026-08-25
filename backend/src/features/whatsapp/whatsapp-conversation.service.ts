@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { prisma } from "../../db/prisma.js";
 import type { DeliveryStatus, InboundChannelMessage, SentChannelMessage } from "./messaging-channel.types.js";
 
@@ -29,6 +30,12 @@ export type WhatsAppMessage = {
   text: string | null;
   deliveryStatus: string | null;
   createdAt: string;
+};
+
+export type OwnedWhatsAppConversation = {
+  conversation: WhatsAppConversation;
+  identityId: string;
+  status: "active" | "closed" | "expired";
 };
 
 function database() {
@@ -124,6 +131,125 @@ export async function listWhatsAppMessages(profileId: string, conversationId: st
     deliveryStatus: row.delivery_status,
     createdAt: new Date(row.created_at).toISOString()
   }));
+}
+
+/** Resolves a conversation only through the calling profile's verified identity. */
+export async function getOwnedWhatsAppConversation(profileId: string, conversationId: string): Promise<OwnedWhatsAppConversation | undefined> {
+  const rows = await database().$queryRawUnsafe<Array<{
+    id: string;
+    whatsapp_identity_id: string;
+    status: OwnedWhatsAppConversation["status"];
+    current_step: string;
+    language: string | null;
+    draft: Record<string, unknown>;
+    display_name: string | null;
+  }>>(
+    `select conversation.id, conversation.whatsapp_identity_id, conversation.status, conversation.current_step,
+            conversation.language, conversation.draft, profile.display_name
+       from public.whatsapp_conversations conversation
+       join public.whatsapp_identities identity on identity.id = conversation.whatsapp_identity_id
+       join public.profiles profile on profile.id = identity.profile_id
+      where conversation.id = $1::uuid
+        and identity.profile_id = $2::uuid
+        and identity.provider = 'vonage'
+        and identity.channel = 'whatsapp'
+      limit 1`,
+    conversationId,
+    profileId
+  );
+  const row = rows[0];
+  if (!row) return undefined;
+  return {
+    identityId: row.whatsapp_identity_id,
+    status: row.status,
+    conversation: {
+      id: row.id,
+      profileId,
+      profileName: row.display_name,
+      currentStep: row.current_step,
+      language: row.language,
+      draft: row.draft && typeof row.draft === "object" && !Array.isArray(row.draft) ? row.draft : {}
+    }
+  };
+}
+
+/** Opens the one active conversation for a verified number without delivering a message to WhatsApp. */
+export async function openDashboardWhatsAppConversation(profileId: string, restart = false): Promise<WhatsAppConversationSummary> {
+  const db = database();
+  return db.$transaction(async (tx) => {
+    const identities = await tx.$queryRawUnsafe<Array<{ id: string; external_identity: string }>>(
+      `select id, external_identity
+         from public.whatsapp_identities
+        where profile_id = $1::uuid and provider = 'vonage' and channel = 'whatsapp'
+        limit 1`,
+      profileId
+    );
+    const identity = identities[0];
+    if (!identity) throw new Error("Link a verified WhatsApp number before starting a dashboard conversation.");
+
+    await tx.$executeRawUnsafe(
+      `update public.whatsapp_conversations
+          set status = 'expired'
+        where whatsapp_identity_id = $1::uuid and status = 'active' and expires_at <= now()`,
+      identity.id
+    );
+    if (restart) {
+      await tx.$executeRawUnsafe(
+        `update public.whatsapp_conversations
+            set status = 'closed'
+          where whatsapp_identity_id = $1::uuid and status = 'active'`,
+        identity.id
+      );
+    }
+    const active = await tx.$queryRawUnsafe<Array<{
+      id: string; status: WhatsAppConversationSummary["status"]; current_step: string; language: string | null; last_message_at: Date | string;
+    }>>(
+      `select id, status, current_step, language, last_message_at
+         from public.whatsapp_conversations
+        where whatsapp_identity_id = $1::uuid and status = 'active'
+        order by last_message_at desc
+        limit 1`,
+      identity.id
+    );
+    const conversation = active[0] ?? (await tx.$queryRawUnsafe<Array<{
+      id: string; status: WhatsAppConversationSummary["status"]; current_step: string; language: string | null; last_message_at: Date | string;
+    }>>(
+      `insert into public.whatsapp_conversations (whatsapp_identity_id)
+       values ($1::uuid)
+       returning id, status, current_step, language, last_message_at`,
+      identity.id
+    ))[0];
+    if (!conversation) throw new Error("Unable to start a WhatsApp conversation.");
+    return {
+      id: conversation.id,
+      phoneNumber: identity.external_identity,
+      status: conversation.status,
+      currentStep: conversation.current_step,
+      language: conversation.language,
+      lastMessageAt: new Date(conversation.last_message_at).toISOString()
+    };
+  });
+}
+
+/** Persists a dashboard message in the shared conversation without relaying it through Vonage. */
+export async function recordDashboardConversationMessage(identityId: string, conversationId: string, direction: "inbound" | "outbound", text: string) {
+  const db = database();
+  await db.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(
+      `insert into public.whatsapp_messages
+         (whatsapp_identity_id, whatsapp_conversation_id, provider, channel, external_message_id, direction, message_type, text_content, delivery_status)
+       values ($1::uuid, $2::uuid, 'laut-dashboard', 'web', $3, $4, 'text', $5, 'delivered')`,
+      identityId,
+      conversationId,
+      randomUUID(),
+      direction,
+      text
+    );
+    await tx.$executeRawUnsafe(
+      `update public.whatsapp_conversations set last_message_at = now() where id = $1::uuid`,
+      conversationId
+    );
+  });
 }
 
 export async function recordInboundMessage(message: InboundChannelMessage): Promise<InboundResult> {

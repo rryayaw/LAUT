@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type AsyncState<T> = {
   data: T | undefined;
@@ -20,6 +20,7 @@ export function useAsyncData<T>(load: () => Promise<T>, deps: readonly unknown[]
   const [error, setError] = useState<Error>();
   const [isLoading, setIsLoading] = useState(true);
   const [reloadToken, setReloadToken] = useState(0);
+  const hasLoaded = useRef(false);
 
   // The loader is defined inline at call sites; `deps` is the real dependency list.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -27,7 +28,7 @@ export function useAsyncData<T>(load: () => Promise<T>, deps: readonly unknown[]
 
   useEffect(() => {
     let active = true;
-    setIsLoading(true);
+    if (!hasLoaded.current) setIsLoading(true);
 
     runLoad()
       .then((result) => {
@@ -40,7 +41,10 @@ export function useAsyncData<T>(load: () => Promise<T>, deps: readonly unknown[]
         setError(cause instanceof Error ? cause : new Error(String(cause)));
       })
       .finally(() => {
-        if (active) setIsLoading(false);
+        if (active) {
+          hasLoaded.current = true;
+          setIsLoading(false);
+        }
       });
 
     return () => {

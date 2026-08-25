@@ -126,6 +126,6 @@ export function formatWhatsAppAnalysisSummary(analysis: SavedBatchAnalysis): str
     lines.push("", "*Pengecekan yang disarankan*");
     for (const check of checks.slice(0, 2)) lines.push(`• ${check.action}${check.relatedLines.length ? ` (${check.relatedLines.join(", ")})` : ""}`);
   }
-  lines.push("", "_Ini perbandingan data, bukan bukti sebab-akibat._");
+  lines.push("", "Detail analisis dan investigasi yang dibuat dapat dilihat di bagian *Investigations* pada LAUT.");
   return lines.join("\n");
 }

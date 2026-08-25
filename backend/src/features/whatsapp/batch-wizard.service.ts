@@ -6,6 +6,7 @@ import { closeConversation, saveConversation, type WhatsAppConversation } from "
 
 type WizardStep =
   | "awaiting_intent" | "awaiting_site" | "awaiting_lines" | "awaiting_batch_details" | "awaiting_species" | "awaiting_product_specification"
+  | "awaiting_product_config_consent"
   | "awaiting_raw_input" | "awaiting_sellable_output" | "awaiting_trimming" | "awaiting_quality_reject"
   | "awaiting_byproduct" | "awaiting_spoilage" | "awaiting_other_loss" | "awaiting_review";
 
@@ -14,6 +15,7 @@ export type WizardDraft = {
   productionLineIds?: string[];
   species?: string;
   productSpecification?: string;
+  productConfigAdditionApproved?: boolean;
   rawInputKg?: number;
   sellableOutputKg?: number;
   trimmingKg?: number;
@@ -29,7 +31,13 @@ const CANCEL_HINT = "_Bisa batal kapan saja dengan balas *batal*._";
 
 const START_COMMANDS = new Set(["tambah batch", "tambah", "start batch", "start", "batch baru"]);
 const CANCEL_COMMANDS = new Set(["batal", "cancel"]);
-const COMPLETE_BATCH_PROMPT = `Ceritakan batch lengkap dalam satu pesan:
+const COMPLETE_BATCH_PROMPT = `Ceritakan batch ini dengan santai dalam satu pesan—tidak perlu mengikuti format khusus. Misalnya:
+
+"Tadi pagi kami proses tuna fillet beku. Bahan baku 100 kg, hasil jual 70 kg, trimming 10 kg, reject 5 kg, produk samping 10 kg, spoilage 3 kg, dan kehilangan lain 2 kg."
+
+Kalau ada informasi yang belum tertulis, saya akan menanyakannya satu per satu.
+
+Kalau lebih nyaman, Anda juga bisa memasukkan:
 
 • Jenis ikan
 • Spesifikasi produk
@@ -46,6 +54,7 @@ Saya akan menanyakan hanya data yang masih kurang.
 ${CANCEL_HINT}`;
 const FIELD_LABELS: Record<keyof WizardDraft, string> = {
   manufacturingSiteId: "lokasi produksi", productionLineIds: "lini produksi", species: "jenis ikan", productSpecification: "spesifikasi produk",
+  productConfigAdditionApproved: "konfigurasi produk",
   rawInputKg: "bahan baku", sellableOutputKg: "hasil jual", trimmingKg: "trimming", qualityRejectKg: "reject kualitas",
   byproductKg: "produk samping", spoilageKg: "spoilage", otherLossKg: "kehilangan lain"
 };
@@ -102,6 +111,90 @@ async function linesFor(profileId: string, siteId: string) {
      where line.manufacturing_site_id = $1::uuid and line.is_active = true and site.owner_id = $2::uuid order by line.name`,
     siteId, profileId
   );
+}
+
+async function configuredProductsForSite(siteId: string) {
+  return database().$queryRawUnsafe<Array<{ species: string; product_specification: string }>>(
+    `select species, product_specification
+       from public.site_product_configs
+      where manufacturing_site_id = $1::uuid
+      order by species, product_specification`,
+    siteId
+  );
+}
+
+function sameConfiguredText(left: string, right: string) {
+  return left.trim().toLocaleLowerCase() === right.trim().toLocaleLowerCase();
+}
+
+async function speciesPrompt(siteId: string): Promise<WizardReply> {
+  const configurations = await configuredProductsForSite(siteId);
+  const species = [...new Map(configurations.map((configuration) => [configuration.species.trim().toLocaleLowerCase(), configuration.species])).values()];
+  const knownSpecies = species.length
+    ? `\n\n*Jenis ikan yang sudah terdaftar di lokasi ini:*\n${species.map((name) => `• ${name}`).join("\n")}`
+    : "\n\nBelum ada jenis ikan yang terdaftar di lokasi ini.";
+  return { text: withCancelHint(`*Jenis ikan* apa yang diproses?${knownSpecies}\n\nKalau jenis ikannya belum ada, tulis saja—saya akan minta persetujuan untuk menambahkannya.`) };
+}
+
+async function productSpecificationPrompt(siteId: string, species: string): Promise<WizardReply> {
+  const configurations = await configuredProductsForSite(siteId);
+  const specifications = configurations
+    .filter((configuration) => sameConfiguredText(configuration.species, species))
+    .map((configuration) => configuration.product_specification);
+  const knownSpecifications = specifications.length
+    ? `\n\n*Spesifikasi produk ${species} yang sudah terdaftar:*\n${specifications.map((specification) => `• ${specification}`).join("\n")}`
+    : `\n\nBelum ada spesifikasi produk untuk *${species}* di lokasi ini.`;
+  return { text: withCancelHint(`*Spesifikasi produk* untuk ${species} apa?${knownSpecifications}\n\nKalau spesifikasinya baru, tulis saja—saya akan minta persetujuan untuk menambahkannya.`) };
+}
+
+async function promptForStep(step: WizardStep, draft: WizardDraft): Promise<WizardReply> {
+  const definition = STEPS.find(([candidate]) => candidate === step);
+  if (!definition) throw new Error("Unknown WhatsApp wizard step.");
+  if (step === "awaiting_species" && draft.manufacturingSiteId) return speciesPrompt(draft.manufacturingSiteId);
+  if (step === "awaiting_product_specification" && draft.manufacturingSiteId && draft.species) {
+    return productSpecificationPrompt(draft.manufacturingSiteId, draft.species);
+  }
+  return { text: withCancelHint(definition[2]) };
+}
+
+/** Keeps chat-created batches on the same site product catalogue as the web form. */
+async function promptForProductConfiguration(conversation: WhatsAppConversation, draft: WizardDraft): Promise<WizardReply | undefined> {
+  if (!draft.manufacturingSiteId || !draft.species) return undefined;
+  const configurations = await configuredProductsForSite(draft.manufacturingSiteId);
+  const sameSpecies = configurations.filter((config) => sameConfiguredText(config.species, draft.species!));
+  if (!draft.productSpecification && sameSpecies.length > 0) return undefined;
+  const hasExactProduct = draft.productSpecification !== undefined
+    && sameSpecies.some((config) => sameConfiguredText(config.product_specification, draft.productSpecification!));
+  if (hasExactProduct) {
+    delete draft.productConfigAdditionApproved;
+    return undefined;
+  }
+
+  if (!draft.productConfigAdditionApproved) {
+    const productLabel = draft.productSpecification ? `*${draft.species} · ${draft.productSpecification}*` : `*${draft.species}*`;
+    conversation.currentStep = "awaiting_product_config_consent";
+    await saveConversation(conversation);
+    return {
+      text: withCancelHint(`${productLabel} belum terdaftar untuk lokasi ini.\n\nApakah Anda ingin menambahkannya lalu melanjutkan batch? Balas *ya* atau *tidak*.`)
+    };
+  }
+
+  if (!draft.productSpecification) {
+    conversation.currentStep = "awaiting_product_specification";
+    await saveConversation(conversation);
+    return productSpecificationPrompt(draft.manufacturingSiteId, draft.species);
+  }
+
+  await database().$executeRawUnsafe(
+    `insert into public.site_product_configs (manufacturing_site_id, species, product_specification)
+     values ($1::uuid, $2, $3)
+     on conflict do nothing`,
+    draft.manufacturingSiteId,
+    draft.species,
+    draft.productSpecification
+  );
+  delete draft.productConfigAdditionApproved;
+  return undefined;
 }
 
 async function sitePrompt(profileId: string): Promise<WizardReply> {
@@ -162,11 +255,13 @@ async function promptForMissing(conversation: WhatsAppConversation, draft: Wizar
     await saveConversation(conversation);
     return linePrompt(conversation.profileId, draft.manufacturingSiteId);
   }
+  const productConfigurationReply = await promptForProductConfiguration(conversation, draft);
+  if (productConfigurationReply) return productConfigurationReply;
   const missing = nextMissingBatchField(draft);
   if (missing) {
     conversation.currentStep = missing[0];
     await saveConversation(conversation);
-    return { text: withCancelHint(missing[2]) };
+    return promptForStep(missing[0], draft);
   }
   conversation.currentStep = "awaiting_review";
   await saveConversation(conversation);
@@ -208,7 +303,7 @@ function stepForEdit(field: string): WizardStep | undefined {
   return aliases[field.toLowerCase()];
 }
 
-async function confirmBatch(profileId: string, draft: WizardDraft) {
+async function confirmBatch(profileId: string, draft: WizardDraft, sourceChannel: "whatsapp" | "web") {
   if (!draft.manufacturingSiteId || !draft.productionLineIds?.length) throw new Error("Batch location is incomplete.");
   const manufacturingSiteId = draft.manufacturingSiteId;
   const productionLineIds = draft.productionLineIds;
@@ -229,10 +324,21 @@ async function confirmBatch(profileId: string, draft: WizardDraft) {
       manufacturingSiteId, productionLineIds
     );
     if (lineCount[0]?.count !== productionLineIds.length) throw new Error("One or more selected production lines are unavailable.");
+    const configuredProduct = await tx.$queryRawUnsafe<Array<{ id: string }>>(
+      `select id from public.site_product_configs
+        where manufacturing_site_id = $1::uuid
+          and lower(species) = lower($2)
+          and lower(product_specification) = lower($3)
+        limit 1`,
+      manufacturingSiteId,
+      draft.species!,
+      draft.productSpecification!
+    );
+    if (!configuredProduct[0]) throw new Error("This species and product specification are not configured for the selected site.");
     const created = await tx.$queryRawUnsafe<Array<{ id: string }>>(
       `insert into public.production_batch (manufacturing_site_id, source_channel, species, product_specification, raw_input_kg, sellable_output_kg, trimming_kg, quality_reject_kg, byproduct_kg, spoilage_kg, other_loss_kg)
-       values ($1::uuid, 'whatsapp', $2, $3, $4, $5, $6, $7, $8, $9, $10) returning id`,
-      manufacturingSiteId, draft.species!, draft.productSpecification!, draft.rawInputKg!, draft.sellableOutputKg!, draft.trimmingKg!, draft.qualityRejectKg!, draft.byproductKg!, draft.spoilageKg!, draft.otherLossKg!
+       values ($1::uuid, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
+      manufacturingSiteId, sourceChannel, draft.species!, draft.productSpecification!, draft.rawInputKg!, draft.sellableOutputKg!, draft.trimmingKg!, draft.qualityRejectKg!, draft.byproductKg!, draft.spoilageKg!, draft.otherLossKg!
     );
     const id = created[0]?.id;
     if (!id) throw new Error("Batch creation did not return an ID.");
@@ -242,14 +348,14 @@ async function confirmBatch(profileId: string, draft: WizardDraft) {
     await tx.$executeRawUnsafe(`update public.production_batch set status = 'confirmed', confirmed_at = now() where id = $1::uuid and status = 'draft'`, id);
     await tx.$executeRawUnsafe(
       `insert into public.production_batch_audit_events (production_batch_id, actor_user_id, event_type, metadata) values ($1::uuid, $2::uuid, 'confirmed', $3::jsonb)`,
-      id, profileId, JSON.stringify({ validation, source: "whatsapp" })
+      id, profileId, JSON.stringify({ validation, source: sourceChannel })
     );
     return id;
   });
   return { batchId, validation };
 }
 
-export async function advanceBatchWizard(conversation: WhatsAppConversation, inboundText: string): Promise<WizardReply> {
+export async function advanceBatchWizard(conversation: WhatsAppConversation, inboundText: string, sourceChannel: "whatsapp" | "web" = "whatsapp"): Promise<WizardReply> {
   const input = cleanText(inboundText);
   const lower = input.toLowerCase();
   let draft = draftOf(conversation);
@@ -260,17 +366,17 @@ export async function advanceBatchWizard(conversation: WhatsAppConversation, inb
     return { text: "*Batch dibatalkan.*\n\nJika ingin mulai lagi, balas *tambah batch*.", close: true };
   }
   if (START_COMMANDS.has(lower)) {
-    conversation.currentStep = "awaiting_site";
+    conversation.currentStep = "awaiting_batch_details";
     conversation.draft = {};
     await saveConversation(conversation);
-    return sitePrompt(conversation.profileId);
+    return { text: COMPLETE_BATCH_PROMPT };
   }
   const extraction = await extractBatchCandidates(conversation, input);
   let startedByAi = false;
   if (step === "awaiting_intent" && extraction?.intent === "start_batch") {
     conversation.draft = {};
     draft = draftOf(conversation);
-    step = "awaiting_site";
+    step = "awaiting_batch_details";
     startedByAi = true;
   }
   if (extraction) {
@@ -283,9 +389,9 @@ export async function advanceBatchWizard(conversation: WhatsAppConversation, inb
     }
   }
   if (startedByAi) {
-    conversation.currentStep = "awaiting_site";
+    conversation.currentStep = "awaiting_batch_details";
     await saveConversation(conversation);
-    return sitePrompt(conversation.profileId);
+    return { text: COMPLETE_BATCH_PROMPT };
   }
   if (step === "awaiting_intent") return { text: `Halo${conversation.profileName ? `, ${conversation.profileName}` : ""}! 👋\n\nSelamat datang di *LAUT*. Mau mencatat batch baru?\n\nBalas *tambah batch* untuk mulai.\nBalas *batal* kapan saja untuk menghentikan proses.` };
 
@@ -312,12 +418,11 @@ export async function advanceBatchWizard(conversation: WhatsAppConversation, inb
     return { text: COMPLETE_BATCH_PROMPT };
   }
   if (step === "awaiting_batch_details") {
-    conversation.currentStep = "awaiting_species";
-    step = "awaiting_species";
+    return promptForMissing(conversation, draft);
   }
   if (step === "awaiting_review") {
     if (lower === "confirm") {
-      const result = await confirmBatch(conversation.profileId, draft);
+      const result = await confirmBatch(conversation.profileId, draft, sourceChannel);
       if (typeof result.batchId === "string") {
         await closeConversation(conversation.id);
         const confirmation = `*Batch berhasil dikonfirmasi* ✅\n\nID batch: ${result.batchId}\nData sudah dikunci dan tercatat di riwayat LAUT.`;
@@ -339,12 +444,30 @@ export async function advanceBatchWizard(conversation: WhatsAppConversation, inb
     return { text: withCancelHint(STEPS.find(([candidate]) => candidate === editStep)![2]) };
   }
 
+  if (step === "awaiting_product_config_consent") {
+    if (["ya", "yes", "y"].includes(lower)) {
+      draft.productConfigAdditionApproved = true;
+      return promptForMissing(conversation, draft);
+    }
+    if (["tidak", "no", "n"].includes(lower)) {
+      delete draft.species;
+      delete draft.productSpecification;
+      delete draft.productConfigAdditionApproved;
+      conversation.currentStep = "awaiting_species";
+      await saveConversation(conversation);
+      return speciesPrompt(draft.manufacturingSiteId!);
+    }
+    return { text: "Balas *ya* untuk menambahkan produk ke lokasi ini, atau *tidak* untuk memilih produk lain." };
+  }
+
   const definition = STEPS.find(([candidate]) => candidate === step);
   if (!definition) throw new Error("Unknown WhatsApp wizard step.");
   const [, field, prompt] = definition;
   if (field === "species" || field === "productSpecification") {
     if (!input || input.length > 2_000) return { text: "Mohon kirim teks yang valid.\n\n" + prompt };
     draft[field] = input;
+    const productConfigurationReply = await promptForProductConfiguration(conversation, draft);
+    if (productConfigurationReply) return productConfigurationReply;
   } else {
     const value = parseMass(input);
     if (value === undefined) return { text: "Mohon kirim angka kg yang valid.\nContoh: 12,5" };
@@ -358,5 +481,5 @@ export async function advanceBatchWizard(conversation: WhatsAppConversation, inb
   }
   conversation.currentStep = next[0];
   await saveConversation(conversation);
-  return { text: withCancelHint(next[2]) };
+  return promptForStep(next[0], draft);
 }

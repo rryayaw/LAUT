@@ -1,5 +1,5 @@
-import { WhatsAppView } from "@/features/whatsapp/WhatsAppView";
+import { redirect } from "next/navigation";
 
 export default function WhatsAppPage() {
-  return <WhatsAppView />;
+  redirect("/assistant");
 }

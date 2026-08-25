@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getAuthenticatedUser, requireAuthenticatedUser } from "../auth/auth.middleware.js";
 import { advanceBatchWizard } from "./batch-wizard.service.js";
 import { InMemoryMessageDeduplicator } from "./in-memory-message-deduplicator.js";
-import { linkWhatsAppIdentity, listWhatsAppConversations, listWhatsAppMessages, recordDeliveryStatus, recordInboundMessage, recordOutboundMessage } from "./whatsapp-conversation.service.js";
+import { getOwnedWhatsAppConversation, linkWhatsAppIdentity, listWhatsAppConversations, listWhatsAppMessages, openDashboardWhatsAppConversation, recordDashboardConversationMessage, recordDeliveryStatus, recordInboundMessage, recordOutboundMessage } from "./whatsapp-conversation.service.js";
 import { VonageWhatsAppAdapter } from "./vonage-whatsapp.adapter.js";
 
 export const whatsappRouter = Router();
@@ -11,6 +11,8 @@ const adapter = new VonageWhatsAppAdapter();
 const statusDeduplicator = new InMemoryMessageDeduplicator();
 const linkSchema = z.object({ phoneNumber: z.string().min(7).max(20) });
 const conversationParamsSchema = z.object({ conversationId: z.string().uuid() });
+const dashboardConversationSchema = z.object({ restart: z.boolean().optional() });
+const dashboardMessageSchema = z.object({ text: z.string().trim().min(1).max(4_000) });
 
 whatsappRouter.get("/v1/whatsapp/conversations", requireAuthenticatedUser, async (_request, response) => {
   try {
@@ -19,6 +21,19 @@ whatsappRouter.get("/v1/whatsapp/conversations", requireAuthenticatedUser, async
   } catch (error) {
     console.error("Unable to list WhatsApp conversations", error);
     return response.status(503).json({ error: "WhatsApp conversations are unavailable." });
+  }
+});
+
+whatsappRouter.post("/v1/whatsapp/conversations", requireAuthenticatedUser, async (request, response) => {
+  const parsed = dashboardConversationSchema.safeParse(request.body ?? {});
+  if (!parsed.success) return response.status(400).json({ error: "Provide a valid conversation request." });
+
+  try {
+    const conversation = await openDashboardWhatsAppConversation(getAuthenticatedUser(response).id, parsed.data.restart);
+    return response.status(201).json({ conversation });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to start a WhatsApp conversation.";
+    return response.status(message.startsWith("Link a verified") ? 422 : 503).json({ error: message });
   }
 });
 
@@ -33,6 +48,26 @@ whatsappRouter.get("/v1/whatsapp/conversations/:conversationId/messages", requir
   } catch (error) {
     console.error("Unable to list WhatsApp messages", error);
     return response.status(503).json({ error: "WhatsApp messages are unavailable." });
+  }
+});
+
+whatsappRouter.post("/v1/whatsapp/conversations/:conversationId/messages", requireAuthenticatedUser, async (request, response) => {
+  const params = conversationParamsSchema.safeParse(request.params);
+  const body = dashboardMessageSchema.safeParse(request.body);
+  if (!params.success || !body.success) return response.status(400).json({ error: "Provide a valid conversation ID and message text." });
+
+  try {
+    const owned = await getOwnedWhatsAppConversation(getAuthenticatedUser(response).id, params.data.conversationId);
+    if (!owned) return response.status(404).json({ error: "WhatsApp conversation was not found." });
+    if (owned.status !== "active") return response.status(409).json({ error: "This conversation is closed. Start a new conversation to continue." });
+
+    await recordDashboardConversationMessage(owned.identityId, owned.conversation.id, "inbound", body.data.text);
+    const reply = await advanceBatchWizard(owned.conversation, body.data.text, "web");
+    await recordDashboardConversationMessage(owned.identityId, owned.conversation.id, "outbound", reply.text);
+    return response.status(201).json({ reply });
+  } catch (error) {
+    console.error("Unable to send dashboard WhatsApp message", error);
+    return response.status(503).json({ error: "The batch assistant is unavailable." });
   }
 });
 

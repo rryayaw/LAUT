@@ -131,6 +131,23 @@ async function assertLinesBelongToSite(manufacturingSiteId: string, productionLi
   }
 }
 
+/** A confirmed batch must use a declared site product so comparisons stay meaningful. */
+async function assertConfiguredSiteProduct(manufacturingSiteId: string, species: string | null | undefined, productSpecification: string | null | undefined): Promise<void> {
+  if (!species || !productSpecification) return;
+  const rows = await requirePrisma().$queryRawUnsafe<Array<{ id: string }>>(
+    `select id
+       from public.site_product_configs
+      where manufacturing_site_id = $1::uuid
+        and lower(species) = lower($2)
+        and lower(product_specification) = lower($3)
+      limit 1`,
+    manufacturingSiteId,
+    species,
+    productSpecification
+  );
+  if (!rows[0]) throw new ApiError(422, "This species and product specification are not configured for the selected site.");
+}
+
 async function getBatchDetail(batchId: string): Promise<BatchDatabaseRow> {
   const rows = await requirePrisma().$queryRawUnsafe<BatchDatabaseRow[]>(
     `select
@@ -253,6 +270,7 @@ batchReportingRouter.post(
     const input = parseOrThrow(createBatchSchema, request.body);
     await assertUserOwnsManufacturingSite(user.id, input.manufacturingSiteId);
     await assertLinesBelongToSite(input.manufacturingSiteId, input.productionLineIds);
+    await assertConfiguredSiteProduct(input.manufacturingSiteId, input.species, input.productSpecification);
     const database = requirePrisma();
     const batch = await database.$transaction(async (transaction) => {
       const rows = await transaction.$queryRawUnsafe<BatchDatabaseRow[]>(
@@ -407,6 +425,12 @@ batchReportingRouter.post(
       response.status(422).json({ error: "The draft batch is not ready to confirm.", validation });
       return;
     }
+    if (typeof batch.manufacturing_site_id !== "string") throw new ApiError(500, "Batch site is invalid.");
+    await assertConfiguredSiteProduct(
+      batch.manufacturing_site_id,
+      typeof batch.species === "string" ? batch.species : null,
+      typeof batch.product_specification === "string" ? batch.product_specification : null
+    );
 
     const database = requirePrisma();
     await database.$transaction(async (transaction) => {
