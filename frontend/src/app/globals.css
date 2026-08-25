@@ -56,6 +56,78 @@ body {
   background: var(--canvas);
 }
 
+body:has(.landing-page) {
+  height: auto;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--canvas);
+}
+
+@layer components {
+  .button-primary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-[#246f76] px-5 py-3 text-sm font-semibold text-white transition duration-200 hover:bg-[#1a5961] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .button-secondary {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-[#246f76] bg-white/80 px-4 py-2 text-sm font-medium text-[#133852] transition duration-200 hover:bg-white active:scale-[0.98];
+  }
+
+  .button-ghost {
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-medium text-[#133852] transition duration-200 hover:bg-white/60 active:scale-[0.98];
+  }
+
+  .section-label {
+    @apply font-mono text-xs font-medium uppercase tracking-[0.18em] text-[#246f76];
+  }
+
+.auth-input {
+    @apply min-h-11 w-full rounded-lg border border-[#afd5d6] bg-white px-3 text-base text-[#133852] outline-none transition placeholder:text-[#4e6a79] focus:border-[#246f76] focus:ring-2 focus:ring-[#246f76]/20;
+  }
+}
+
+.scroll-guide-logo {
+  top: var(--guide-y, 4rem);
+  transform: translateX(calc(-50% + var(--guide-x, 0px))) rotate(var(--guide-rotation, 90deg));
+  transform-origin: center;
+  transition: top 140ms ease-out, transform 140ms ease-out;
+}
+
+.hero-reveal {
+  opacity: 0;
+  animation: hero-reveal 900ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.hero-reveal-delay-1 {
+  animation-delay: 150ms;
+}
+
+.hero-reveal-delay-2 {
+  animation-delay: 300ms;
+}
+
+.hero-reveal-delay-3 {
+  animation-delay: 450ms;
+}
+
+@keyframes hero-reveal {
+  from {
+    opacity: 0;
+    transform: translateX(-2rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-guide-logo {
+    transition: none;
+  }
+}
+
 button,
 a {
   -webkit-tap-highlight-color: transparent;
