@@ -13,6 +13,24 @@ export type WhatsAppConversation = {
 
 type InboundResult = { duplicate: boolean; linked: boolean; profileName: string | null; identityId?: string; conversation?: WhatsAppConversation };
 
+export type WhatsAppConversationSummary = {
+  id: string;
+  phoneNumber: string;
+  status: "active" | "closed" | "expired";
+  currentStep: string;
+  language: string | null;
+  lastMessageAt: string;
+};
+
+export type WhatsAppMessage = {
+  id: string;
+  direction: "inbound" | "outbound";
+  messageType: string;
+  text: string | null;
+  deliveryStatus: string | null;
+  createdAt: string;
+};
+
 function database() {
   if (!prisma) throw new Error("Database access is not configured.");
   return prisma;
@@ -38,6 +56,74 @@ export async function linkWhatsAppIdentity(profileId: string, phoneNumber: strin
      returning id, external_identity, verified_at`, profileId, externalIdentity
   );
   return rows[0];
+}
+
+/** Lists only conversations belonging to the authenticated LAUT profile. */
+export async function listWhatsAppConversations(profileId: string): Promise<WhatsAppConversationSummary[]> {
+  const rows = await database().$queryRawUnsafe<Array<{
+    id: string;
+    phone_number: string;
+    status: WhatsAppConversationSummary["status"];
+    current_step: string;
+    language: string | null;
+    last_message_at: Date | string;
+  }>>(
+    `select conversation.id, identity.external_identity as phone_number, conversation.status,
+            conversation.current_step, conversation.language, conversation.last_message_at
+       from public.whatsapp_conversations conversation
+       join public.whatsapp_identities identity on identity.id = conversation.whatsapp_identity_id
+      where identity.profile_id = $1::uuid and identity.provider = 'vonage' and identity.channel = 'whatsapp'
+      order by conversation.last_message_at desc`,
+    profileId
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    phoneNumber: row.phone_number,
+    status: row.status,
+    currentStep: row.current_step,
+    language: row.language,
+    lastMessageAt: new Date(row.last_message_at).toISOString()
+  }));
+}
+
+/** Reads a message history only after ownership is established through its identity. */
+export async function listWhatsAppMessages(profileId: string, conversationId: string): Promise<WhatsAppMessage[] | undefined> {
+  const ownsConversation = await database().$queryRawUnsafe<Array<{ id: string }>>(
+    `select conversation.id
+       from public.whatsapp_conversations conversation
+       join public.whatsapp_identities identity on identity.id = conversation.whatsapp_identity_id
+      where conversation.id = $1::uuid and identity.profile_id = $2::uuid
+      limit 1`,
+    conversationId,
+    profileId
+  );
+  if (!ownsConversation[0]) return undefined;
+
+  const rows = await database().$queryRawUnsafe<Array<{
+    id: string;
+    direction: WhatsAppMessage["direction"];
+    message_type: string;
+    text_content: string | null;
+    delivery_status: string | null;
+    created_at: Date | string;
+  }>>(
+    `select message.id, message.direction, message.message_type, message.text_content,
+            message.delivery_status, message.created_at
+       from public.whatsapp_messages message
+      where message.whatsapp_conversation_id = $1::uuid
+      order by message.created_at asc`,
+    conversationId
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    direction: row.direction,
+    messageType: row.message_type,
+    text: row.text_content,
+    deliveryStatus: row.delivery_status,
+    createdAt: new Date(row.created_at).toISOString()
+  }));
 }
 
 export async function recordInboundMessage(message: InboundChannelMessage): Promise<InboundResult> {

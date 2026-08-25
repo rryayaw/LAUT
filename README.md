@@ -176,6 +176,31 @@ optional and requires GOOGLE_API_KEY. If the Phase 6 migration has not yet
 been applied, the batch still confirms but its WhatsApp analysis will be shown
 as unavailable.
 
+## Production Vonage cutover
+
+The Sandbox configuration above is for local testing only. Before hosting,
+create a Vonage Application, attach the approved WhatsApp sender/WABA, and
+configure its inbound and status webhooks with public HTTPS URLs:
+
+```text
+https://<api-host>/v1/whatsapp/inbound
+https://<api-host>/v1/whatsapp/status
+```
+
+Set the production sender and Messages API regional endpoint in the hosted
+backend. The current adapter uses Sandbox Basic credentials, so it must be
+switched to the Vonage Application's JWT/private-key authentication before
+production deployment. Do not place the private key, API secret, or webhook
+signing secret in the frontend environment. The dashboard only needs its
+normal `NEXT_PUBLIC_API_URL` pointing to the hosted backend; the webhooks and
+Vonage credentials are backend-only.
+
+For self-service phone linking, use a short-lived code in the dashboard that
+the user sends from their WhatsApp number (for example, `LINK 123456`). The
+signed inbound webhook then proves control of that number and can attach it to
+the signed-in LAUT profile. Do not expose the development-only manual identity
+endpoint as a production form.
+
 ## Import the synthetic red snapper dataset
 
 The supplied workbook is available as a reproducible test fixture. Its 360

@@ -65,13 +65,7 @@ function OperationsTopBar() {
           <p className="text-[11px] text-[var(--muted)]">{primarySite?.location ?? ""}</p>
         </div>
       </div>
-      <div className="flex items-center gap-5">
-        <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-          <MessageCircle aria-hidden="true" size={14} strokeWidth={1.75} />
-          <span>WhatsApp channel not connected</span>
-        </div>
-        <SessionControl />
-      </div>
+      <SessionControl />
     </header>
   );
 }
@@ -106,7 +100,7 @@ function OperationsSidebar() {
   const primaryNavigation: NavigationItem[] = [
     { href: "/", icon: LayoutDashboard, label: "Dashboard" },
     { href: "/batches", icon: ClipboardCheck, label: "Batches" },
-    { icon: MessageCircle, label: "WhatsApp", plannedNote: "WhatsApp channel behaviour is not decided yet" },
+    { href: "/whatsapp", icon: MessageCircle, label: "WhatsApp" },
     { href: "/analysis", icon: BarChart3, label: "Analysis" },
     { href: "/investigations", icon: ScanLine, label: "Investigations", badge: openInvestigations },
     { href: "/production-sites", icon: Building2, label: "Production sites" }

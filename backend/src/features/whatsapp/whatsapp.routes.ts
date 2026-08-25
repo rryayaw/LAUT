@@ -3,13 +3,38 @@ import { z } from "zod";
 import { getAuthenticatedUser, requireAuthenticatedUser } from "../auth/auth.middleware.js";
 import { advanceBatchWizard } from "./batch-wizard.service.js";
 import { InMemoryMessageDeduplicator } from "./in-memory-message-deduplicator.js";
-import { linkWhatsAppIdentity, recordDeliveryStatus, recordInboundMessage, recordOutboundMessage } from "./whatsapp-conversation.service.js";
+import { linkWhatsAppIdentity, listWhatsAppConversations, listWhatsAppMessages, recordDeliveryStatus, recordInboundMessage, recordOutboundMessage } from "./whatsapp-conversation.service.js";
 import { VonageWhatsAppAdapter } from "./vonage-whatsapp.adapter.js";
 
 export const whatsappRouter = Router();
 const adapter = new VonageWhatsAppAdapter();
 const statusDeduplicator = new InMemoryMessageDeduplicator();
 const linkSchema = z.object({ phoneNumber: z.string().min(7).max(20) });
+const conversationParamsSchema = z.object({ conversationId: z.string().uuid() });
+
+whatsappRouter.get("/v1/whatsapp/conversations", requireAuthenticatedUser, async (_request, response) => {
+  try {
+    const conversations = await listWhatsAppConversations(getAuthenticatedUser(response).id);
+    return response.status(200).json({ conversations });
+  } catch (error) {
+    console.error("Unable to list WhatsApp conversations", error);
+    return response.status(503).json({ error: "WhatsApp conversations are unavailable." });
+  }
+});
+
+whatsappRouter.get("/v1/whatsapp/conversations/:conversationId/messages", requireAuthenticatedUser, async (request, response) => {
+  const parsed = conversationParamsSchema.safeParse(request.params);
+  if (!parsed.success) return response.status(400).json({ error: "Provide a valid conversation ID." });
+
+  try {
+    const messages = await listWhatsAppMessages(getAuthenticatedUser(response).id, parsed.data.conversationId);
+    if (!messages) return response.status(404).json({ error: "WhatsApp conversation was not found." });
+    return response.status(200).json({ messages });
+  } catch (error) {
+    console.error("Unable to list WhatsApp messages", error);
+    return response.status(503).json({ error: "WhatsApp messages are unavailable." });
+  }
+});
 
 whatsappRouter.put("/v1/whatsapp/identity", requireAuthenticatedUser, async (request, response) => {
   const parsed = linkSchema.safeParse(request.body);
