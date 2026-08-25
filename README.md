@@ -2,6 +2,50 @@
 
 LAUT is a production-intelligence platform for Indonesian seafood processors. It helps teams record batch yield and loss data, compare confirmed batches, and investigate abnormal performance.
 
+## Judge quick start (Docker Compose)
+
+Prerequisites: Docker Desktop with Compose, and a Supabase project with this
+repository's migrations applied. LAUT uses Supabase for both its database and
+authentication; Compose does **not** create a compatible replacement locally.
+
+1. Create the two local environment files:
+
+   ```powershell
+   Copy-Item frontend/.env.example frontend/.env.local
+   Copy-Item backend/.env.example backend/.env
+   ```
+
+2. Set these required values, using the same Supabase project in both files:
+
+   ```text
+   frontend/.env.local
+   NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+   NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_<key>
+
+   backend/.env
+   DATABASE_URL=postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres
+   SUPABASE_URL=https://<project-ref>.supabase.co
+   SUPABASE_PUBLISHABLE_KEY=sb_publishable_<key>
+   ```
+
+3. Apply the repository migrations to that project, then start the application:
+
+   ```powershell
+   npx supabase login
+   npx supabase link --project-ref <project-ref>
+   npx supabase db push
+   docker compose up --build
+   ```
+
+4. Open http://localhost:3000. The backend health endpoint is available at
+   http://localhost:8000/health and interactive API documentation at
+   http://localhost:8000/docs.
+
+Use `docker compose down` to stop the stack. The optional Gemini and Vonage
+values may remain unset for normal judging; the core sign-in and production
+workflow require only the Supabase values above.
+
 ## Start the frontend
 
 The frontend reads and writes everything through the backend, so start the backend
