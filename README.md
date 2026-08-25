@@ -5,7 +5,7 @@ LAUT is a production-intelligence platform for Indonesian seafood processors. It
 ## Start the frontend
 
 The frontend reads and writes everything through the backend, so start the backend
-first (see below) and have a Supabase user to sign in as.
+first (see below). You can create an account from the sign-in page.
 
 ```powershell
 cd frontend
@@ -20,11 +20,14 @@ Fill in `frontend/.env.local` before the first run:
 | --- | --- |
 | `NEXT_PUBLIC_API_BASE_URL` | Where the backend is listening, e.g. `http://localhost:8000`. |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL. Must be the same project the backend uses. |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key, used for sign-in only. |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key, used for sign-in and account creation. |
 
 Open http://localhost:3000 and sign in. Every page is gated on a Supabase session,
 because each backend route requires that account's access token — the token also
 scopes which manufacturing sites and batches are visible.
+
+For sign-up confirmation links, add your local URL (for example `http://localhost:3000`)
+and the deployed frontend URL to Supabase **Auth → URL Configuration → Redirect URLs**.
 
 If the app says it cannot reach the LAUT API, the backend is not running or
 `NEXT_PUBLIC_API_BASE_URL` points somewhere else. If it says Supabase is not
