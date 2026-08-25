@@ -21,6 +21,7 @@ import { useAsyncData } from "@/hooks/useAsyncData";
 import { AuthGate, useSessionEmail, useSignOut } from "@/features/auth/AuthGate";
 import { listProductionSites } from "@/features/production-sites/api/production-sites.api";
 import { listInvestigations } from "@/features/investigations/api/investigations.api";
+import { WhatsAppNumberPrompt } from "@/components/app/WhatsAppNumberPrompt";
 
 type NavigationItem = {
   /** Omitted for areas that are on the map but not built yet. */
@@ -44,6 +45,7 @@ export function OperationsShell({ children }: Readonly<{ children: ReactNode }>)
               content pane horizontally, rather than the document. */}
           <div className="min-w-[59rem]">
             <OperationsTopBar />
+            <WhatsAppNumberPrompt />
             {children}
           </div>
         </section>

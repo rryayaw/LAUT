@@ -7,6 +7,7 @@ import { getSupabaseClient, isSupabaseConfigured } from "@/api/supabase";
 import title from "@/assets/laut-title.png";
 import logo from "@/assets/laut-logo.png";
 import hero from "@/assets/laut-manufacturing-hero.png";
+import { WHATSAPP_NUMBER_PROMPT_SESSION_KEY } from "@/components/app/WhatsAppNumberPrompt";
 
 const scrollGuidePoints = Array.from({ length: 121 }, (_, index) => {
   const progress = index / 120;
@@ -196,7 +197,12 @@ function ScrollGuide({ destinationRef }: Readonly<{ destinationRef: RefObject<HT
   );
 }
 
-export function useSignOut() { return useCallback(async () => { await getSupabaseClient()?.auth.signOut(); }, []); }
+export function useSignOut() {
+  return useCallback(async () => {
+    window.sessionStorage.removeItem(WHATSAPP_NUMBER_PROMPT_SESSION_KEY);
+    await getSupabaseClient()?.auth.signOut();
+  }, []);
+}
 
 export function useSessionEmail() {
   const [email, setEmail] = useState<string>();

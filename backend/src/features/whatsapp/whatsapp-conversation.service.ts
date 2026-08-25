@@ -32,6 +32,12 @@ export type WhatsAppMessage = {
   createdAt: string;
 };
 
+export type WhatsAppIdentity = {
+  id: string;
+  phoneNumber: string;
+  verifiedAt: string | null;
+};
+
 export type OwnedWhatsAppConversation = {
   conversation: WhatsAppConversation;
   identityId: string;
@@ -49,7 +55,7 @@ export function normalizeWhatsAppNumber(value: string) {
   return normalized;
 }
 
-export async function linkWhatsAppIdentity(profileId: string, phoneNumber: string) {
+export async function linkWhatsAppIdentity(profileId: string, phoneNumber: string): Promise<WhatsAppIdentity> {
   const externalIdentity = normalizeWhatsAppNumber(phoneNumber);
   const db = database();
   const existing = await db.$queryRawUnsafe<Row[]>(
@@ -62,7 +68,36 @@ export async function linkWhatsAppIdentity(profileId: string, phoneNumber: strin
      on conflict (profile_id, provider, channel) do update set external_identity = excluded.external_identity, verified_at = now()
      returning id, external_identity, verified_at`, profileId, externalIdentity
   );
-  return rows[0];
+  const identity = rows[0] as { id?: string; external_identity?: string; verified_at?: Date | string | null } | undefined;
+  if (!identity?.id || !identity.external_identity) throw new Error("Unable to save the WhatsApp identity.");
+  return {
+    id: identity.id,
+    phoneNumber: identity.external_identity,
+    verifiedAt: identity.verified_at ? new Date(identity.verified_at).toISOString() : null
+  };
+}
+
+/** Returns the calling profile's linked WhatsApp number, if it has one. */
+export async function getWhatsAppIdentity(profileId: string): Promise<WhatsAppIdentity | null> {
+  const rows = await database().$queryRawUnsafe<Array<{
+    id: string;
+    external_identity: string;
+    verified_at: Date | string | null;
+  }>>(
+    `select id, external_identity, verified_at
+       from public.whatsapp_identities
+      where profile_id = $1::uuid and provider = 'vonage' and channel = 'whatsapp'
+      limit 1`,
+    profileId
+  );
+  const identity = rows[0];
+  if (!identity) return null;
+
+  return {
+    id: identity.id,
+    phoneNumber: identity.external_identity,
+    verifiedAt: identity.verified_at ? new Date(identity.verified_at).toISOString() : null
+  };
 }
 
 /** Lists only conversations belonging to the authenticated LAUT profile. */

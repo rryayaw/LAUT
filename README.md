@@ -38,7 +38,8 @@ authentication; Compose does **not** create a compatible replacement locally.
    docker compose up --build
    ```
 
-4. Open http://localhost:3000. The backend health endpoint is available at
+4. Open http://localhost:3000. If Next selects 3001 because 3000 is busy,
+   open http://localhost:3001 instead; the local backend accepts both. The backend health endpoint is available at
    http://localhost:8000/health and interactive API documentation at
    http://localhost:8000/docs.
 
@@ -145,9 +146,10 @@ self-service production feature until phone ownership is verified.
    VONAGE_SIGNATURE_SECRET=<webhook-signature-secret>
    ```
 
-5. Sign in as the tester in Swagger at http://localhost:8000/docs using their
-   Supabase access token, then call PUT /v1/whatsapp/identity with the
-   tester's number in international format:
+5. Sign in to the LAUT dashboard and add the tester's WhatsApp number in the
+   number prompt shown after login. The same development-only operation is
+   also available in Swagger at http://localhost:8000/docs through
+   PUT /v1/whatsapp/identity, with the tester's number in international format:
 
    ```json
    { "phoneNumber": "+628123456789" }

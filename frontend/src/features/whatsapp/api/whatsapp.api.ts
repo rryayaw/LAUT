@@ -18,6 +18,12 @@ export type WhatsAppMessage = {
   createdAt: string;
 };
 
+export type WhatsAppIdentity = {
+  id: string;
+  phoneNumber: string;
+  verifiedAt?: string;
+};
+
 type ConversationRow = {
   id: string;
   phoneNumber: string;
@@ -35,6 +41,36 @@ type MessageRow = {
   deliveryStatus: string | null;
   createdAt: string;
 };
+
+type IdentityRow = {
+  id: string;
+  phoneNumber: string;
+  verifiedAt: string | null;
+};
+
+function toWhatsAppIdentity(identity: IdentityRow | null): WhatsAppIdentity | null {
+  if (!identity) return null;
+  return {
+    id: identity.id,
+    phoneNumber: identity.phoneNumber,
+    verifiedAt: toIsoTimestamp(identity.verifiedAt)
+  };
+}
+
+export async function getWhatsAppIdentity(): Promise<WhatsAppIdentity | null> {
+  const { whatsappIdentity } = await apiRequest<{ whatsappIdentity: IdentityRow | null }>("/v1/whatsapp/identity");
+  return toWhatsAppIdentity(whatsappIdentity);
+}
+
+export async function linkWhatsAppIdentity(phoneNumber: string): Promise<WhatsAppIdentity> {
+  const { whatsappIdentity } = await apiRequest<{ whatsappIdentity: IdentityRow }>("/v1/whatsapp/identity", {
+    method: "PUT",
+    body: { phoneNumber }
+  });
+  const identity = toWhatsAppIdentity(whatsappIdentity);
+  if (!identity) throw new Error("LAUT could not save that WhatsApp number.");
+  return identity;
+}
 
 export async function listWhatsAppConversations(): Promise<WhatsAppConversation[]> {
   const { conversations } = await apiRequest<{ conversations: ConversationRow[] }>("/v1/whatsapp/conversations");

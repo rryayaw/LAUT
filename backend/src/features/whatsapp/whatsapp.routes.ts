@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getAuthenticatedUser, requireAuthenticatedUser } from "../auth/auth.middleware.js";
 import { advanceBatchWizard } from "./batch-wizard.service.js";
 import { InMemoryMessageDeduplicator } from "./in-memory-message-deduplicator.js";
-import { getOwnedWhatsAppConversation, linkWhatsAppIdentity, listWhatsAppConversations, listWhatsAppMessages, openDashboardWhatsAppConversation, recordDashboardConversationMessage, recordDeliveryStatus, recordInboundMessage, recordOutboundMessage } from "./whatsapp-conversation.service.js";
+import { getOwnedWhatsAppConversation, getWhatsAppIdentity, linkWhatsAppIdentity, listWhatsAppConversations, listWhatsAppMessages, openDashboardWhatsAppConversation, recordDashboardConversationMessage, recordDeliveryStatus, recordInboundMessage, recordOutboundMessage } from "./whatsapp-conversation.service.js";
 import { VonageWhatsAppAdapter } from "./vonage-whatsapp.adapter.js";
 
 export const whatsappRouter = Router();
@@ -21,6 +21,16 @@ whatsappRouter.get("/v1/whatsapp/conversations", requireAuthenticatedUser, async
   } catch (error) {
     console.error("Unable to list WhatsApp conversations", error);
     return response.status(503).json({ error: "WhatsApp conversations are unavailable." });
+  }
+});
+
+whatsappRouter.get("/v1/whatsapp/identity", requireAuthenticatedUser, async (_request, response) => {
+  try {
+    const whatsappIdentity = await getWhatsAppIdentity(getAuthenticatedUser(response).id);
+    return response.status(200).json({ whatsappIdentity });
+  } catch (error) {
+    console.error("Unable to read WhatsApp identity", error);
+    return response.status(503).json({ error: "WhatsApp identity is unavailable." });
   }
 });
 
