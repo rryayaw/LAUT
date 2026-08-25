@@ -9,6 +9,7 @@ import { useAsyncData } from "@/hooks/useAsyncData";
 import { getWhatsAppIdentity, linkWhatsAppIdentity } from "@/features/whatsapp/api/whatsapp.api";
 
 export const WHATSAPP_NUMBER_PROMPT_SESSION_KEY = "laut-whatsapp-number-prompted";
+export const WHATSAPP_IDENTITY_UPDATED_EVENT = "laut-whatsapp-identity-updated";
 
 /**
  * A non-blocking reminder plus a first-visit modal for users who have not yet
@@ -27,6 +28,11 @@ export function WhatsAppNumberPrompt() {
       setIsOpen(true);
     }
   }, [identity, identityError, isLoading]);
+
+  useEffect(() => {
+    window.addEventListener(WHATSAPP_IDENTITY_UPDATED_EVENT, reload);
+    return () => window.removeEventListener(WHATSAPP_IDENTITY_UPDATED_EVENT, reload);
+  }, [reload]);
 
   if (isLoading || identity || identityError) return null;
 
@@ -62,6 +68,7 @@ function WhatsAppNumberDialog({ onLinked, onOpenChange, open }: Readonly<{ onLin
     setIsSaving(true);
     try {
       await linkWhatsAppIdentity(phoneNumber);
+      window.dispatchEvent(new Event(WHATSAPP_IDENTITY_UPDATED_EVENT));
       onLinked();
       onOpenChange(false);
     } catch (cause) {

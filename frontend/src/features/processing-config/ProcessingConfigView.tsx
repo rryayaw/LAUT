@@ -1,16 +1,44 @@
 "use client";
 
+import { useEffect, useState, type FormEvent } from "react";
 import { AsyncBoundary } from "@/components/app/AsyncBoundary";
 import { OperationsShell } from "@/components/app/OperationsShell";
 import { PageHeader } from "@/components/app/PageHeader";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { WHATSAPP_IDENTITY_UPDATED_EVENT } from "@/components/app/WhatsAppNumberPrompt";
 import { useAsyncData } from "@/hooks/useAsyncData";
+import { getWhatsAppIdentity, linkWhatsAppIdentity } from "@/features/whatsapp/api/whatsapp.api";
 import { listLossCategories, listProcessTags, listProductConfigs } from "./api/processing-config.api";
 
 export function ProcessingConfigView() {
   const { data: configs, error, isLoading } = useAsyncData(() => listProductConfigs(), []);
   const { data: lossCategories } = useAsyncData(() => listLossCategories(), []);
   const { data: processTags } = useAsyncData(() => listProcessTags(), []);
+  const { data: whatsappIdentity, error: whatsappError, isLoading: isLoadingWhatsApp, reload: reloadWhatsApp } = useAsyncData(() => getWhatsAppIdentity(), []);
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [saveError, setSaveError] = useState<string>();
+  const [isSavingWhatsApp, setIsSavingWhatsApp] = useState(false);
+
+  useEffect(() => {
+    setPhoneNumber(whatsappIdentity?.phoneNumber ?? "");
+  }, [whatsappIdentity]);
+
+  async function saveWhatsAppNumber(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaveError(undefined);
+    setIsSavingWhatsApp(true);
+    try {
+      await linkWhatsAppIdentity(phoneNumber);
+      window.dispatchEvent(new Event(WHATSAPP_IDENTITY_UPDATED_EVENT));
+      reloadWhatsApp();
+    } catch (cause) {
+      setSaveError(cause instanceof Error ? cause.message : "Unable to save that WhatsApp number. Please try again.");
+    } finally {
+      setIsSavingWhatsApp(false);
+    }
+  }
 
   return (
     <OperationsShell>
@@ -23,6 +51,37 @@ export function ProcessingConfigView() {
         />
 
         <div className="mt-6 space-y-6">
+          <section aria-labelledby="whatsapp-number-title" className="border-y border-[var(--line)] bg-[var(--surface)]">
+            <div className="border-b border-[var(--line)] px-5 py-4">
+              <p className="text-xs font-medium text-[var(--muted)]">Batch assistant</p>
+              <h2 className="mt-1 text-lg font-semibold tracking-tight" id="whatsapp-number-title">WhatsApp number</h2>
+              <p className="mt-1 text-sm leading-6 text-[var(--muted)]">Use the number your team messages LAUT from. Changing it updates future WhatsApp conversations for this workspace.</p>
+            </div>
+            <form className="flex items-end gap-4 px-5 py-5" onSubmit={saveWhatsAppNumber}>
+              <label className="grid max-w-md flex-1 gap-2 text-sm font-medium text-[var(--ink)]" htmlFor="configuration-whatsapp-number">
+                {whatsappIdentity ? "Linked WhatsApp number" : "WhatsApp number"}
+                <Input
+                  autoComplete="tel"
+                  className="h-11 rounded-none border-[var(--line-strong)] bg-[var(--canvas)] text-[var(--ink)] placeholder:text-[var(--muted)] focus-visible:ring-[var(--focus)]"
+                  disabled={isLoadingWhatsApp}
+                  id="configuration-whatsapp-number"
+                  inputMode="tel"
+                  onChange={(event) => setPhoneNumber(event.target.value)}
+                  placeholder="e.g. +628123456789"
+                  required
+                  type="tel"
+                  value={phoneNumber}
+                />
+              </label>
+              <Button className="h-11 rounded-none bg-[var(--brand)] px-4 text-white hover:bg-[var(--brand-strong)]" disabled={isSavingWhatsApp || isLoadingWhatsApp} type="submit">
+                {isSavingWhatsApp ? "Saving…" : whatsappIdentity ? "Change number" : "Add number"}
+              </Button>
+            </form>
+            {whatsappError ? <p className="border-t border-[var(--line)] px-5 py-3 text-sm text-[var(--risk)]" role="alert">Unable to load the WhatsApp setting. Refresh and try again.</p> : null}
+            {saveError ? <p aria-live="polite" className="border-t border-[var(--line)] px-5 py-3 text-sm text-[var(--risk)]" role="alert">{saveError}</p> : null}
+            <p className="border-t border-[var(--line)] px-5 py-3 text-[11px] leading-4 text-[var(--muted)]">Include your country code. In the production setup, changing this number should be confirmed through a WhatsApp ownership check.</p>
+          </section>
+
           <AsyncBoundary error={error} isLoading={isLoading}>
             <section aria-labelledby="product-config-title" className="border-y border-[var(--line)] bg-[var(--surface)]">
               <div className="border-b border-[var(--line)] px-5 py-4">
