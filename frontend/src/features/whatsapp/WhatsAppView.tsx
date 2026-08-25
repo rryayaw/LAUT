@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { CheckCheck, CircleAlert, Clock3, RefreshCw, Smartphone } from "lucide-react";
+import { useMemo, useState } from "react";
+import { CheckCheck, CircleAlert, RefreshCw, Smartphone } from "lucide-react";
 import { AsyncBoundary } from "@/components/app/AsyncBoundary";
 import { OperationsShell } from "@/components/app/OperationsShell";
 import { PageHeader } from "@/components/app/PageHeader";
@@ -37,15 +37,6 @@ export function WhatsAppView() {
     [selectedConversation?.id]
   );
 
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      reloadConversations();
-      reloadMessages();
-    }, 8_000);
-
-    return () => window.clearInterval(interval);
-  }, [reloadConversations, reloadMessages]);
-
   const reload = () => {
     reloadConversations();
     reloadMessages();
@@ -54,10 +45,10 @@ export function WhatsAppView() {
   return (
     <OperationsShell>
       <a className="skip-link" href="#whatsapp-content">Skip to WhatsApp conversations</a>
-      <main className="mx-auto max-w-[92rem] px-7 py-6" id="whatsapp-content" tabIndex={-1}>
+      <main className="mx-auto flex h-[calc(100dvh-3.5rem)] max-w-[92rem] flex-col overflow-hidden px-7 py-6" id="whatsapp-content" tabIndex={-1}>
         <PageHeader
           breadcrumb="Operations / WhatsApp"
-          description="Messages are read from the verified WhatsApp identity linked to your signed-in LAUT account. This view refreshes automatically."
+          description="Messages are read from the verified WhatsApp identity linked to your signed-in LAUT account. Refresh when you need the latest messages."
           title="WhatsApp batch assistant"
           actions={
             <button
@@ -71,19 +62,20 @@ export function WhatsAppView() {
           }
         />
 
-        <AsyncBoundary
-          emptyMessage="Link a verified WhatsApp number to this account, then send a message to LAUT to begin a batch conversation."
-          emptyTitle="No linked conversations"
-          error={conversationsError}
-          isEmpty={(conversations?.length ?? 0) === 0}
-          isLoading={conversationsLoading}
-        >
-          <div className="mt-6 grid min-h-[34rem] grid-cols-1 border border-[var(--line)] bg-[var(--surface)] lg:grid-cols-[17rem_minmax(0,1fr)]">
-            <aside className="border-b border-[var(--line)] bg-[var(--surface-subtle)] lg:border-r lg:border-b-0">
+        <div className="mt-6 min-h-0 flex-1">
+          <AsyncBoundary
+            emptyMessage="Link a verified WhatsApp number to this account, then send a message to LAUT to begin a batch conversation."
+            emptyTitle="No linked conversations"
+            error={conversationsError}
+            isEmpty={(conversations?.length ?? 0) === 0}
+            isLoading={conversationsLoading}
+          >
+          <div className="grid h-full min-h-0 grid-cols-1 grid-rows-[minmax(12rem,0.45fr)_minmax(0,1fr)] overflow-hidden border border-[var(--line)] bg-[var(--surface)] lg:grid-cols-[17rem_minmax(0,1fr)] lg:grid-rows-1">
+            <aside className="flex min-h-0 flex-col border-b border-[var(--line)] bg-[var(--surface-subtle)] lg:border-r lg:border-b-0">
               <div className="border-b border-[var(--line)] px-4 py-4">
                 <p className="text-xs font-medium text-[var(--muted)]">Linked conversations</p>
               </div>
-              <div className="divide-y divide-[var(--line)]">
+              <div className="min-h-0 flex-1 divide-y divide-[var(--line)] overflow-y-auto">
                 {(conversations ?? []).map((conversation) => {
                   const isSelected = selectedConversation?.id === conversation.id;
                   return (
@@ -102,10 +94,10 @@ export function WhatsAppView() {
               </div>
             </aside>
 
-            <section aria-label="Conversation messages" className="flex min-w-0 flex-col">
+            <section aria-label="Conversation messages" className="flex min-h-0 min-w-0 flex-col">
               <header className="flex items-center justify-between border-b border-[var(--line)] px-5 py-4">
                 <div className="flex items-center gap-3"><span className="grid h-9 w-9 place-items-center bg-[var(--brand-soft)] text-[var(--brand)]"><Smartphone aria-hidden="true" size={17} strokeWidth={1.75} /></span><div><p className="font-mono text-sm text-[var(--ink)]">+{selectedConversation?.phoneNumber}</p><p className="text-xs text-[var(--muted)]">{selectedConversation ? `${statusLabel(selectedConversation.status)} conversation` : ""}</p></div></div>
-                <p className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)]"><Clock3 aria-hidden="true" size={14} strokeWidth={1.75} /> Auto-refreshes</p>
+                <p className="text-xs text-[var(--muted)]">Read-only transcript</p>
               </header>
 
               <AsyncBoundary
@@ -115,7 +107,7 @@ export function WhatsAppView() {
                 isEmpty={(messages?.length ?? 0) === 0}
                 isLoading={messagesLoading}
               >
-                <ol className="flex flex-1 flex-col gap-4 overflow-auto px-6 py-5" role="list">
+                <ol className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 py-5" role="list">
                   {(messages ?? []).map((message) => {
                     const outgoing = message.direction === "outbound";
                     return (
@@ -139,7 +131,8 @@ export function WhatsAppView() {
               </footer>
             </section>
           </div>
-        </AsyncBoundary>
+          </AsyncBoundary>
+        </div>
       </main>
     </OperationsShell>
   );
