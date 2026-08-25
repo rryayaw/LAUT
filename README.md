@@ -1,5 +1,5 @@
 # LAUT
-laut-tau.vercel.app
+https://laut-tau.vercel.app
 
 LAUT is a production-intelligence platform for Indonesian seafood processors. It helps teams record batch yield and loss data, compare confirmed batches, and investigate abnormal performance.
 
